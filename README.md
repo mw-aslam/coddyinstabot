@@ -98,6 +98,15 @@ sudo chmod a+rx /usr/local/bin/yt-dlp
    Чтобы заработал inline-режим (`@бот запрос` в любом чате), включите его один раз через
    [@BotFather](https://t.me/BotFather) → выберите бота → *Bot Settings → Inline Mode → Turn on*.
 
+   **Файлы больше 50 МБ (до 2 ГБ).** Telegram's cloud Bot API отдаёт максимум 50 МБ, это
+   ограничение самого Telegram, не настройки бота. Чтобы поднять лимит до 2 ГБ, нужен свой
+   локальный Bot API сервер:
+   1. Получите `api_id`/`api_hash` на [my.telegram.org](https://my.telegram.org) → *API development tools*.
+   2. Локально (без Docker Compose): `docker run -d --name telegram-bot-api -p 8081:8081 -e TELEGRAM_API_ID=... -e TELEGRAM_API_HASH=... -e TELEGRAM_LOCAL=true -v telegram-bot-api-data:/var/lib/telegram-bot-api aiogram/telegram-bot-api:latest`
+      (в полном `docker compose up` эта служба уже включена как `bot-api`).
+   3. В `.env` впишите `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` и `TELEGRAM_API_ROOT=http://localhost:8081`.
+      `MAX_FILE_SIZE_MB` при этом сам по умолчанию поднимется до 2000, если явно не задан.
+
 2. Создайте базу данных (если её ещё нет):
    ```sql
    CREATE DATABASE instabot;
