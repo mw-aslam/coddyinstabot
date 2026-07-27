@@ -55,6 +55,7 @@ export interface ProbeResult {
   height?: number;
   hasAudio: boolean;
   hasVideo: boolean;
+  vcodec?: string;
   size: number;
 }
 

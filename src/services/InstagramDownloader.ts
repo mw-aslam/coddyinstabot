@@ -144,7 +144,10 @@ export class InstagramDownloader {
     logger.info('Downloading video', { url, quality, type });
     const heightCap = quality === 'best' ? undefined : QUALITY_HEIGHTS[quality];
     const capExpr = heightCap ? `[height<=${heightCap}]` : '';
-    const selector = `bv*${capExpr}+ba/b${capExpr}/best`;
+    // Prefer H.264 first: it's universally playable, whereas VP9/AV1-in-MP4 isn't
+    // decoded by many players (e.g. Telegram). Falls back to any codec if no H.264
+    // stream exists (common on Instagram) — the post-download probe catches that case.
+    const selector = `bv*[vcodec^=avc1]${capExpr}+ba/b[vcodec^=avc1]${capExpr}/bv*${capExpr}+ba/b${capExpr}/best`;
     const outputTemplate = path.join(outDir, 'video.%(ext)s');
 
     await runYtDlp([
@@ -180,10 +183,18 @@ export class InstagramDownloader {
       }
     }
 
-    if (path.extname(filePath).toLowerCase() === '.mp4') {
-      const faststartPath = path.join(outDir, 'faststart.mp4');
-      await ffmpegService.faststart(filePath, faststartPath);
-      filePath = faststartPath;
+    if (path.extname(filePath).toLowerCase() === '.mp4' && probe.hasVideo) {
+      const isH264 = probe.vcodec === 'h264';
+      const finalPath = path.join(outDir, 'final.mp4');
+      if (isH264) {
+        await ffmpegService.faststart(filePath, finalPath);
+      } else {
+        // Instagram often serves VP9-only streams; VP9-in-MP4 isn't decoded by many
+        // players (Telegram included), so re-encode to the universally-supported codec.
+        logger.warn('Video codec is not H.264, transcoding for compatibility', { url, vcodec: probe.vcodec });
+        await ffmpegService.transcodeToH264(filePath, finalPath);
+      }
+      filePath = finalPath;
     }
 
     const stat = await fs.stat(filePath);

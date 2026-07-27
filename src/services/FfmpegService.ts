@@ -60,7 +60,7 @@ export class FfmpegService {
 
     const data = JSON.parse(stdout) as {
       format?: { duration?: string; size?: string };
-      streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
+      streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
     };
 
     const videoStream = data.streams?.find((s) => s.codec_type === 'video');
@@ -72,6 +72,7 @@ export class FfmpegService {
       height: videoStream?.height,
       hasVideo: Boolean(videoStream),
       hasAudio: Boolean(audioStream),
+      vcodec: videoStream?.codec_name,
       size: data.format?.size ? Number.parseInt(data.format.size, 10) : 0,
     };
   }
@@ -133,6 +134,37 @@ export class FfmpegService {
       inputPath,
       '-c',
       'copy',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+  }
+
+  /**
+   * Re-encodes the video track to H.264/AAC. Instagram frequently serves VP9-only
+   * streams in an MP4 container; VP9-in-MP4 isn't decoded by many players (Telegram
+   * included), so audio plays while the video sits frozen on the first frame.
+   */
+  async transcodeToH264(inputPath: string, outputPath: string): Promise<void> {
+    logger.debug('Transcoding video to H.264', { inputPath, outputPath });
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '26',
+      '-maxrate',
+      '3500k',
+      '-bufsize',
+      '7000k',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
       '-movflags',
       '+faststart',
       outputPath,
