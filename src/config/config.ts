@@ -45,6 +45,13 @@ export const config = {
     level: process.env.LOG_LEVEL ?? 'info',
     dir: path.resolve(process.cwd(), process.env.LOG_DIR ?? './logs'),
   },
+
+  // Comma-separated @usernames the bot requires users to subscribe to before use.
+  // Empty by default (feature off). The bot must be an admin in every listed channel.
+  requiredChannels: (process.env.REQUIRED_CHANNELS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;

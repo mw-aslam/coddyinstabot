@@ -43,11 +43,12 @@ interface RawInfo {
 const BASE_ARGS = [
   '--no-warnings',
   '--no-playlist',
-  '--no-call-home',
   '--socket-timeout',
   '30',
   '--retries',
   '3',
+  '--concurrent-fragments',
+  '8',
   '--user-agent',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
 ];
