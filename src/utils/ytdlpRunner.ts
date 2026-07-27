@@ -1,6 +1,14 @@
 import { spawn } from 'node:child_process';
 import { config } from '../config/config';
-import { DownloadError, InvalidLinkError, MediaNotFoundError, NetworkError, PrivateAccountError, TimeoutError } from './errors';
+import {
+  AgeRestrictedError,
+  DownloadError,
+  InvalidLinkError,
+  MediaNotFoundError,
+  NetworkError,
+  PrivateAccountError,
+  TimeoutError,
+} from './errors';
 
 const BASE_ARGS = [
   '--no-warnings',
@@ -59,6 +67,9 @@ export function mapYtDlpError(stderr: string): Error {
   }
   if (text.includes('unsupported url') || text.includes('is not a valid url') || text.includes('unable to extract')) {
     return new InvalidLinkError(stderr.slice(-500));
+  }
+  if (text.includes('confirm your age') || text.includes('age-restricted') || text.includes('inappropriate for some users')) {
+    return new AgeRestrictedError(stderr.slice(-500));
   }
   if (
     text.includes('404') ||

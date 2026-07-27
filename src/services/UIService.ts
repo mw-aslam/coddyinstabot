@@ -1,6 +1,8 @@
 import { Markup } from 'telegraf';
 import type { MusicTrack, QualityOption } from '../types';
 import { formatDuration } from '../utils/formatters';
+import type { OverviewStats, TopQueryRow } from '../database/statsRepository';
+import type { FavoriteRow } from '../database/favoriteRepository';
 
 export type Stage = 'analyze' | 'download' | 'convert' | 'upload';
 
@@ -49,6 +51,11 @@ export const helpText = [
   '*Поиск музыки*',
   '🎵 Напиши название трека или исполнителя текстом, без ссылки — найду на YouTube и пришлю MP3.',
   '💡 Для точного результата указывай исполнителя вместе с названием.',
+  '',
+  '*Полезные команды*',
+  '❤️ Кнопка «Сохранить» под файлом добавляет его в /favorites.',
+  '🔁 Кнопка «Поделиться» даёт ссылку, по которой друг сразу получит тот же файл.',
+  '🔥 /top — самые популярные запросы за неделю.',
   '',
   `⚠️ Ограничение Telegram: файл не может быть больше 50 МБ.`,
   '⚙️ Одновременно можно запустить не более 2 загрузок — остальные встанут в очередь.',
@@ -108,9 +115,62 @@ export function trackPickerKeyboard(sessionId: string, tracks: MusicTrack[]) {
   return Markup.inlineKeyboard(rows);
 }
 
-/** Shown under a delivered video so the user can grab just the audio without resending the link. */
-export function extractAudioKeyboard(sessionId: string) {
-  return Markup.inlineKeyboard([[Markup.button.callback('🎵 Скачать только песню', `extractaudio:${sessionId}`)]]);
+interface ResultActionsOptions {
+  deliveredId: string;
+  /** Present only for Instagram video/videoaudio results — offers a one-tap "just the song" button. */
+  extractSessionId?: string;
+  shareUrl?: string;
+}
+
+/** Action row(s) attached under every delivered file: extract audio, save, share. */
+export function resultActionsKeyboard(opts: ResultActionsOptions) {
+  const rows: ReturnType<typeof Markup.button.callback | typeof Markup.button.url>[][] = [];
+  if (opts.extractSessionId) {
+    rows.push([Markup.button.callback('🎵 Скачать только песню', `extractaudio:${opts.extractSessionId}`)]);
+  }
+  const actionRow: ReturnType<typeof Markup.button.callback | typeof Markup.button.url>[] = [
+    Markup.button.callback('❤️ Сохранить', `save:${opts.deliveredId}`),
+  ];
+  if (opts.shareUrl) {
+    actionRow.push(Markup.button.url('🔁 Поделиться', opts.shareUrl));
+  }
+  rows.push(actionRow);
+  return Markup.inlineKeyboard(rows);
+}
+
+export function statsText(stats: OverviewStats): string {
+  const byType = Object.entries(stats.byType)
+    .map(([type, count]) => `   • ${type}: ${count}`)
+    .join('\n');
+  return [
+    '📊 *Статистика бота*',
+    '',
+    `👤 Пользователей: ${stats.totalUsers}`,
+    `📥 Всего загрузок: ${stats.totalDownloads}`,
+    `✅ Успешных: ${stats.successCount}`,
+    `❌ С ошибкой: ${stats.errorCount}`,
+    '',
+    '*По типам:*',
+    byType || '   —',
+  ].join('\n');
+}
+
+export function topText(rows: TopQueryRow[]): string {
+  if (rows.length === 0) return '📈 За последние 7 дней запросов ещё не было.';
+  const lines = rows.map((r, i) => `${i + 1}. ${escapeMarkdown(truncate(r.title, 60))} — ${r.count}x`);
+  return ['🔥 *Топ за 7 дней*', '', ...lines].join('\n');
+}
+
+export function favoritesText(rows: FavoriteRow[]): string {
+  if (rows.length === 0) return '❤️ У тебя пока нет сохранённых треков/видео. Сохраняй их кнопкой «❤️ Сохранить» под результатом.';
+  return ['❤️ *Твоё избранное*', '', 'Нажми, чтобы скачать заново:'].join('\n');
+}
+
+export function favoritesKeyboard(rows: FavoriteRow[]) {
+  const buttons = rows.map((row) => [
+    Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 45)}`, `fav:${row.id}`),
+  ]);
+  return Markup.inlineKeyboard(buttons);
 }
 
 function truncate(text: string, maxLength: number): string {

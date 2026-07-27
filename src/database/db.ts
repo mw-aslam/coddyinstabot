@@ -38,6 +38,28 @@ const MIGRATIONS = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_downloads_user_id ON downloads(user_id);
+
+  -- One row per successfully delivered file: backs the "save to favorites" and
+  -- "share via deep link" buttons attached to sent results.
+  CREATE TABLE IF NOT EXISTS delivered_items (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    type TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS favorites (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    type TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, source_url)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
 `;
 
 /** Creates the schema if it doesn't exist yet. Safe to run on every startup. */

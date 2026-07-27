@@ -52,6 +52,12 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+
+  // Comma-separated Telegram user IDs allowed to run admin-only commands (e.g. /stats).
+  adminIds: (process.env.ADMIN_IDS ?? '')
+    .split(',')
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n)),
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;

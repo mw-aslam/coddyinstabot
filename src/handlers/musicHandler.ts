@@ -17,6 +17,7 @@ import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
 import { upsertUser } from '../database/userRepository';
+import { buildDeliveryActions } from './deliveryHandler';
 import type { DownloadResult, MusicTrack, SessionData } from '../types';
 
 /** Handles a plain-text message that isn't a link: searches YouTube and offers a track picker. */
@@ -93,6 +94,8 @@ export async function downloadAndSendTrack(ctx: Context, session: SessionData, t
         `⏱ Длительность: ${formatDuration(result.duration)}`,
       ].join('\n');
 
+      const actions = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: track.url, type: 'mp3' });
+
       await ctx.telegram.sendAudio(
         chatId,
         { source: result.filePath, filename: result.fileName },
@@ -102,6 +105,7 @@ export async function downloadAndSendTrack(ctx: Context, session: SessionData, t
           title: result.title,
           duration: result.duration ? Math.round(result.duration) : undefined,
           thumbnail: result.thumbnailPath ? { source: result.thumbnailPath } : undefined,
+          ...actions,
         },
       );
       await edit('✅ Готово!');

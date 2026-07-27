@@ -2,15 +2,7 @@ import type { Context } from 'telegraf';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
 import { queueService } from '../services/QueueService';
-import {
-  extractAudioKeyboard,
-  mainMenuKeyboard,
-  menuText,
-  qualityKeyboard,
-  qualityText,
-  queuedText,
-  stageText,
-} from '../services/UIService';
+import { mainMenuKeyboard, menuText, qualityKeyboard, qualityText, queuedText, stageText } from '../services/UIService';
 import { FileTooLargeError, toUserMessage } from '../utils/errors';
 import { formatDuration, formatFileSize } from '../utils/formatters';
 import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
@@ -18,7 +10,9 @@ import { prepareThumbnail } from '../utils/thumbnail';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
+import { listFavorites } from '../database/favoriteRepository';
 import { downloadAndSendTrack } from './musicHandler';
+import { buildDeliveryActions, handleSaveFavorite, redeliverItem } from './deliveryHandler';
 import type { DownloadResult, DownloadType, QualityOption, SessionData } from '../types';
 
 /** Routes every inline-button press to the right sub-handler based on its callback_data prefix. */
@@ -26,15 +20,26 @@ export async function callbackHandler(ctx: Context): Promise<void> {
   const query = ctx.callbackQuery;
   if (!query || !('data' in query) || !query.data) return;
 
-  const [action, sessionId, value] = query.data.split(':');
-  const session = sessionService.get(sessionId);
-
-  if (!session) {
-    await ctx.answerCbQuery('⌛ Сессия устарела, отправьте ссылку ещё раз.', { show_alert: true });
-    return;
-  }
+  const [action, param, value] = query.data.split(':');
 
   try {
+    // "save" / "fav" reference persistent DB records, not ephemeral sessions — handle first.
+    if (action === 'save') {
+      await handleSaveFavorite(ctx, param);
+      return;
+    }
+    if (action === 'fav') {
+      await ctx.answerCbQuery();
+      await handleFavoriteRedownload(ctx, Number.parseInt(param, 10));
+      return;
+    }
+
+    const session = sessionService.get(param);
+    if (!session) {
+      await ctx.answerCbQuery('⌛ Сессия устарела, отправьте ссылку ещё раз.', { show_alert: true });
+      return;
+    }
+
     if (action === 'type') {
       await handleTypeSelection(ctx, session, value as DownloadType | 'cancel');
     } else if (action === 'quality') {
@@ -134,8 +139,9 @@ async function runDownload(
     // Let the user grab just the audio from a delivered video without resending the link.
     const extractSessionId =
       type !== 'mp3' ? sessionService.create({ userId, chatId, url, info, type: 'mp3' }).id : undefined;
+    const actions = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: url, type }, extractSessionId);
 
-    await sendResult(ctx, chatId, result, extractSessionId);
+    await sendResult(ctx, chatId, result, actions);
     await editStatus(ctx, session, '✅ Готово!');
 
     await logDownload({ userId, url, type, quality, status: 'success', fileSize: result.fileSize });
@@ -160,7 +166,7 @@ async function sendResult(
   ctx: Context,
   chatId: number,
   result: DownloadResult,
-  extractSessionId?: string,
+  actions: Awaited<ReturnType<typeof buildDeliveryActions>>,
 ): Promise<void> {
   const caption = [
     `✅ *${escapeCaption(result.title)}*`,
@@ -181,6 +187,7 @@ async function sendResult(
       title: result.title,
       duration: result.duration ? Math.round(result.duration) : undefined,
       thumbnail,
+      ...actions,
     });
   } else {
     await ctx.telegram.sendVideo(chatId, source, {
@@ -191,7 +198,7 @@ async function sendResult(
       duration: result.duration ? Math.round(result.duration) : undefined,
       supports_streaming: true,
       thumbnail,
-      ...(extractSessionId ? extractAudioKeyboard(extractSessionId) : {}),
+      ...actions,
     });
   }
 }
@@ -222,6 +229,18 @@ async function handleExtractAudio(ctx: Context, session: SessionData): Promise<v
   const updated = sessionService.update(session.id, { statusMessageId: statusMessage.message_id });
   if (!updated) return;
   await processDownload(ctx, updated, 'best');
+}
+
+/** Handles a tap on a saved item from /favorites: re-downloads and sends it. */
+async function handleFavoriteRedownload(ctx: Context, favoriteId: number): Promise<void> {
+  if (!ctx.from) return;
+  const rows = await listFavorites(ctx.from.id, 50);
+  const favorite = rows.find((r) => r.id === favoriteId);
+  if (!favorite) {
+    await ctx.reply('⚠️ Не удалось найти этот элемент в избранном — возможно, он был удалён.');
+    return;
+  }
+  await redeliverItem(ctx, { id: `fav-${favorite.id}`, title: favorite.title, sourceUrl: favorite.sourceUrl, type: favorite.type });
 }
 
 async function editStatus(

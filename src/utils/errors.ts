@@ -32,6 +32,12 @@ export class MediaNotFoundError extends AppError {
   }
 }
 
+export class AgeRestrictedError extends AppError {
+  constructor(message = 'Age-restricted content') {
+    super(message, '🔞 Этот трек/видео возрастное — YouTube требует подтверждение возраста, скачать его напрямую нельзя. Попробуйте другой результат или другой запрос.');
+  }
+}
+
 export class FileTooLargeError extends AppError {
   constructor(sizeMb: number, limitMb: number) {
     super(

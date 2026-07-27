@@ -5,6 +5,9 @@ import { registerErrorMiddleware } from './middlewares/errorMiddleware';
 import { subscriptionMiddleware } from './middlewares/subscriptionMiddleware';
 import { startCommand } from './commands/start';
 import { helpCommand } from './commands/help';
+import { statsCommand } from './commands/stats';
+import { topCommand } from './commands/top';
+import { favoritesCommand } from './commands/favorites';
 import { linkHandler } from './handlers/linkHandler';
 import { callbackHandler } from './handlers/callbackHandler';
 import { isSubscribedToAll } from './services/SubscriptionService';
@@ -31,6 +34,9 @@ export function createBot(): Telegraf {
 
   bot.start(startCommand);
   bot.help(helpCommand);
+  bot.command('stats', statsCommand);
+  bot.command('top', topCommand);
+  bot.command('favorites', favoritesCommand);
 
   bot.on('text', linkHandler);
   bot.on('callback_query', callbackHandler);
