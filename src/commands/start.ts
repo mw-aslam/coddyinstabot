@@ -2,7 +2,7 @@ import type { Context } from 'telegraf';
 import { upsertUser } from '../database/userRepository';
 import { getDeliveredItem } from '../database/deliveredItemRepository';
 import { redeliverItem } from '../handlers/deliveryHandler';
-import { welcomeText } from '../services/UIService';
+import { quickNavKeyboard, welcomeText } from '../services/UIService';
 import { logger } from '../utils/logger';
 
 const DEEP_LINK_PREFIX = 't_';
@@ -25,5 +25,5 @@ export async function startCommand(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.replyWithMarkdown(welcomeText);
+  await ctx.replyWithMarkdown(welcomeText, quickNavKeyboard());
 }

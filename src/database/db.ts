@@ -40,14 +40,20 @@ const MIGRATIONS = `
   CREATE INDEX IF NOT EXISTS idx_downloads_user_id ON downloads(user_id);
 
   -- One row per successfully delivered file: backs the "save to favorites" and
-  -- "share via deep link" buttons attached to sent results.
+  -- "share via deep link" buttons attached to sent results, and (once file_id is set)
+  -- lets inline-mode queries return an already-uploaded track instantly.
   CREATE TABLE IF NOT EXISTS delivered_items (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     source_url TEXT NOT NULL,
     type TEXT NOT NULL,
+    file_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+
+  ALTER TABLE delivered_items ADD COLUMN IF NOT EXISTS file_id TEXT;
+
+  CREATE INDEX IF NOT EXISTS idx_delivered_items_title ON delivered_items (title text_pattern_ops);
 
   CREATE TABLE IF NOT EXISTS favorites (
     id SERIAL PRIMARY KEY,

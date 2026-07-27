@@ -22,3 +22,21 @@ const GENERIC_URL_REGEX = /https?:\/\/\S+|(?:^|\s)www\.\S+/i;
 export function looksLikeUrl(text: string): boolean {
   return GENERIC_URL_REGEX.test(text);
 }
+
+const YOUTUBE_URL_REGEX =
+  /https?:\/\/(?:(?:www|m|music)\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)[\w-]+(?:[&?][\w=&%-]*)?|youtu\.be\/[\w-]+(?:\?[\w=&%-]*)?)/i;
+
+/** Extracts the first YouTube video/Shorts URL found in a free-text message, if any. */
+export function extractYouTubeUrl(text: string): string | null {
+  const match = text.match(YOUTUBE_URL_REGEX);
+  return match ? match[0] : null;
+}
+
+const TIKTOK_URL_REGEX = /https?:\/\/(?:(?:www|vm|vt|m)\.)?tiktok\.com\/[^\s]+/i;
+
+/** Extracts the first TikTok URL found in a free-text message, if any. */
+export function extractTikTokUrl(text: string): string | null {
+  const match = text.match(TIKTOK_URL_REGEX);
+  if (!match) return null;
+  return match[0].replace(/[)\]]+$/, '');
+}

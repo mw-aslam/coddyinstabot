@@ -11,6 +11,7 @@ import { favoritesCommand } from './commands/favorites';
 import { linkHandler } from './handlers/linkHandler';
 import { callbackHandler } from './handlers/callbackHandler';
 import { recognizeHandler } from './handlers/recognizeHandler';
+import { inlineHandler } from './handlers/inlineHandler';
 import { isSubscribedToAll } from './services/SubscriptionService';
 
 export function createBot(): Telegraf {
@@ -39,9 +40,24 @@ export function createBot(): Telegraf {
   bot.command('top', topCommand);
   bot.command('favorites', favoritesCommand);
 
+  // Quick-access buttons under /start mirror the equivalent slash commands.
+  bot.action('nav:top', async (ctx) => {
+    await ctx.answerCbQuery();
+    await topCommand(ctx);
+  });
+  bot.action('nav:favorites', async (ctx) => {
+    await ctx.answerCbQuery();
+    await favoritesCommand(ctx);
+  });
+  bot.action('nav:help', async (ctx) => {
+    await ctx.answerCbQuery();
+    await helpCommand(ctx);
+  });
+
   bot.on('text', linkHandler);
   bot.on(['voice', 'audio', 'video_note'], recognizeHandler);
   bot.on('callback_query', callbackHandler);
+  bot.on('inline_query', inlineHandler);
 
   return bot;
 }

@@ -32,6 +32,7 @@ export interface DownloadResult {
   fileName: string;
   fileSize: number;
   title: string;
+  author?: string;
   duration?: number;
   width?: number;
   height?: number;

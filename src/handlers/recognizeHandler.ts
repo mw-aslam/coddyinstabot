@@ -6,7 +6,7 @@ import { recognitionService } from '../services/RecognitionService';
 import { musicSearchService } from '../services/MusicSearchService';
 import { ffmpegService } from '../services/FfmpegService';
 import { queueService } from '../services/QueueService';
-import { buildDeliveryActions } from './deliveryHandler';
+import { buildDeliveryActions, cacheAudioFileId } from './deliveryHandler';
 import { escapeMarkdown, queuedText, stageText } from '../services/UIService';
 import { toUserMessage, FileTooLargeError, MediaNotFoundError } from '../utils/errors';
 import { formatDuration, formatFileSize } from '../utils/formatters';
@@ -85,8 +85,8 @@ export async function recognizeHandler(ctx: Context): Promise<void> {
         `⏱ Длительность: ${formatDuration(result.duration)}`,
       ].join('\n');
 
-      const actions = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: track.url, type: 'mp3' });
-      await ctx.telegram.sendAudio(
+      const delivery = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: track.url, type: 'mp3' });
+      const sent = await ctx.telegram.sendAudio(
         chatId,
         { source: result.filePath, filename: result.fileName },
         {
@@ -95,9 +95,10 @@ export async function recognizeHandler(ctx: Context): Promise<void> {
           title: result.title,
           duration: result.duration ? Math.round(result.duration) : undefined,
           thumbnail: result.thumbnailPath ? { source: result.thumbnailPath } : undefined,
-          ...actions,
+          ...delivery.keyboard,
         },
       );
+      await cacheAudioFileId(delivery.deliveredId, sent);
       await edit('✅ Готово!');
 
       await logDownload({ userId, url: track.url, type: 'mp3', status: 'success', fileSize: result.fileSize });

@@ -21,6 +21,11 @@ const BASE_ARGS = [
   '8',
   '--user-agent',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  // Works around YouTube's "Sign in to confirm you're not a bot" block on the default web/
+  // android clients — mweb is the one that still returns real (non-storyboard-only) formats
+  // without hitting that check, as of this writing. Re-check if YouTube changes this again.
+  '--extractor-args',
+  'youtube:player_client=mweb,tv',
 ];
 
 /** Runs yt-dlp with the given args, enforcing a timeout and translating known failures. */

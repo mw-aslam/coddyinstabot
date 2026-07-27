@@ -1,6 +1,6 @@
 import { Markup } from 'telegraf';
 import type { MusicTrack, QualityOption } from '../types';
-import { formatDuration } from '../utils/formatters';
+import { formatDuration, formatFileSize } from '../utils/formatters';
 import type { OverviewStats, TopQueryRow } from '../database/statsRepository';
 import type { FavoriteRow } from '../database/favoriteRepository';
 
@@ -60,6 +60,14 @@ export const helpText = [
   `⚠️ Ограничение Telegram: файл не может быть больше 50 МБ.`,
   '⚙️ Одновременно можно запустить не более 2 загрузок — остальные встанут в очередь.',
 ].join('\n');
+
+/** Quick-access row under the welcome message so common commands don't require typing. */
+export function quickNavKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔥 Топ', 'nav:top'), Markup.button.callback('❤️ Избранное', 'nav:favorites')],
+    [Markup.button.callback('❓ Помощь', 'nav:help')],
+  ]);
+}
 
 export function menuText(title: string): string {
   return [`📎 *${escapeMarkdown(title)}*`, '', '📥 Что скачать?'].join('\n');
@@ -175,4 +183,45 @@ export function favoritesKeyboard(rows: FavoriteRow[]) {
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+const GENERIC_TITLE_PATTERN = /^(video|photo|reel)\s+by\s+(.+)$/i;
+
+/**
+ * Instagram posts with no caption get a generic yt-dlp title like "Video by masterkind0" —
+ * shown as-is that reads as broken/ugly. Swap it for the bot's own name and keep the creator
+ * as a separate, clearly-labelled author line instead.
+ */
+export function prettifyInstagramTitle(
+  rawTitle: string,
+  uploader: string | undefined,
+  botName: string,
+): { title: string; author?: string } {
+  const match = rawTitle.match(GENERIC_TITLE_PATTERN);
+  if (match) {
+    return { title: botName, author: uploader ?? match[2].trim() };
+  }
+  return { title: rawTitle, author: uploader };
+}
+
+interface ResultCaptionInput {
+  title: string;
+  author?: string;
+  fileSize: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+}
+
+/** The single caption format used under every delivered video/audio, wherever it's sent from. */
+export function buildResultCaption(result: ResultCaptionInput): string {
+  return [
+    `✅ *${escapeMarkdown(result.title)}*`,
+    result.author ? `👤 Автор: ${escapeMarkdown(result.author)}` : undefined,
+    `📏 Размер: ${formatFileSize(result.fileSize)}`,
+    result.height ? `🎬 Разрешение: ${result.width ?? '?'}x${result.height}` : undefined,
+    `⏱ Длительность: ${formatDuration(result.duration)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }

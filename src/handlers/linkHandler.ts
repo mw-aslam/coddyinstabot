@@ -2,7 +2,13 @@ import type { Context } from 'telegraf';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
 import { mainMenuKeyboard, menuText, stageText } from '../services/UIService';
-import { extractInstagramUrl, looksLikeUnsupportedInstagramLink, looksLikeUrl } from '../utils/validators';
+import {
+  extractInstagramUrl,
+  extractTikTokUrl,
+  extractYouTubeUrl,
+  looksLikeUnsupportedInstagramLink,
+  looksLikeUrl,
+} from '../utils/validators';
 import { toUserMessage } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { upsertUser } from '../database/userRepository';
@@ -11,15 +17,16 @@ import { musicSearchHandler } from './musicHandler';
 const MAX_SEARCH_QUERY_LENGTH = 200;
 
 /**
- * Handles a plain-text message: an Instagram link goes through the analyze+menu flow,
- * anything else that isn't a link is treated as a song/artist search query.
+ * Handles a plain-text message: an Instagram/YouTube/TikTok link goes through the
+ * analyze+menu flow (yt-dlp supports all three the same way), anything else that isn't
+ * a link is treated as a song/artist search query.
  */
 export async function linkHandler(ctx: Context): Promise<void> {
   const message = ctx.message;
   if (!message || !('text' in message)) return;
 
   const text = message.text.trim();
-  const url = extractInstagramUrl(text);
+  const url = extractInstagramUrl(text) ?? extractYouTubeUrl(text) ?? extractTikTokUrl(text);
 
   if (!url) {
     if (looksLikeUnsupportedInstagramLink(text)) {

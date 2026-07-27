@@ -57,6 +57,7 @@ const QUALITY_HEIGHTS: Record<Exclude<QualityOption, 'best'>, number> = {
   '1080': 1080,
 };
 
+/** A thin yt-dlp wrapper — despite the name, it works identically for Instagram, YouTube and TikTok URLs. */
 export class InstagramDownloader {
   /** Fetches metadata + available formats for a link without downloading any media. */
   async analyze(url: string): Promise<InstagramMediaInfo> {

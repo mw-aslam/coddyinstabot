@@ -1,20 +1,22 @@
 import type { Context } from 'telegraf';
 import { nanoid } from 'nanoid';
-import { createDeliveredItem, getDeliveredItem, type DeliveredItem } from '../database/deliveredItemRepository';
+import {
+  createDeliveredItem,
+  getDeliveredItem,
+  setDeliveredItemFileId,
+  type DeliveredItem,
+} from '../database/deliveredItemRepository';
 import { addFavorite } from '../database/favoriteRepository';
-import { resultActionsKeyboard } from '../services/UIService';
+import { buildResultCaption, resultActionsKeyboard, stageText } from '../services/UIService';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { musicSearchService } from '../services/MusicSearchService';
 import { queueService } from '../services/QueueService';
 import { sessionService } from '../services/SessionService';
-import { stageText } from '../services/UIService';
 import { toUserMessage, FileTooLargeError } from '../utils/errors';
-import { formatDuration, formatFileSize } from '../utils/formatters';
 import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
-import { escapeMarkdown } from '../services/UIService';
 import type { DownloadResult, DownloadType } from '../types';
 
 /**
@@ -33,7 +35,16 @@ export async function buildDeliveryActions(
   const botUsername = ctx.botInfo?.username;
   const shareUrl = botUsername ? `https://t.me/${botUsername}?start=t_${deliveredId}` : undefined;
 
-  return resultActionsKeyboard({ deliveredId, extractSessionId, shareUrl });
+  return { deliveredId, keyboard: resultActionsKeyboard({ deliveredId, extractSessionId, shareUrl }) };
+}
+
+/** Caches the file_id Telegram just assigned to a sent audio, so inline mode can reuse it instantly. */
+export async function cacheAudioFileId(deliveredId: string, message: { audio?: { file_id: string } }): Promise<void> {
+  const fileId = message.audio?.file_id;
+  if (!fileId) return;
+  await setDeliveredItemFileId(deliveredId, fileId).catch((err) =>
+    logger.debug('Failed to cache audio file_id (non-fatal)', { err: (err as Error).message }),
+  );
 }
 
 /** Handles a tap on "❤️ Сохранить": looks up the delivered item and adds it to the user's favorites. */
@@ -76,23 +87,24 @@ export async function redeliverItem(ctx: Context, item: DeliveredItem): Promise<
       }
 
       await edit(stageText('upload'));
-      const caption = [
-        `✅ *${escapeMarkdown(result.title)}*`,
-        `📏 Размер: ${formatFileSize(result.fileSize)}`,
-        `⏱ Длительность: ${formatDuration(result.duration)}`,
-      ].join('\n');
+      const caption = buildResultCaption(result);
       const source = { source: result.filePath, filename: result.fileName };
-      const actions = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: item.sourceUrl, type: item.type });
+      const { deliveredId, keyboard } = await buildDeliveryActions(ctx, {
+        title: result.title,
+        sourceUrl: item.sourceUrl,
+        type: item.type,
+      });
 
       if (result.type === 'mp3') {
-        await ctx.telegram.sendAudio(chatId, source, {
+        const sent = await ctx.telegram.sendAudio(chatId, source, {
           caption,
           parse_mode: 'Markdown',
           title: result.title,
           duration: result.duration ? Math.round(result.duration) : undefined,
           thumbnail: result.thumbnailPath ? { source: result.thumbnailPath } : undefined,
-          ...actions,
+          ...keyboard,
         });
+        await cacheAudioFileId(deliveredId, sent);
       } else {
         await ctx.telegram.sendVideo(chatId, source, {
           caption,
@@ -101,7 +113,7 @@ export async function redeliverItem(ctx: Context, item: DeliveredItem): Promise<
           height: result.height,
           duration: result.duration ? Math.round(result.duration) : undefined,
           supports_streaming: true,
-          ...actions,
+          ...keyboard,
         });
       }
       await edit('✅ Готово!');

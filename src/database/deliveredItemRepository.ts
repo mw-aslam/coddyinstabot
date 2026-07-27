@@ -27,3 +27,27 @@ export async function getDeliveredItem(id: string): Promise<DeliveredItem | null
   if (!row) return null;
   return { id: row.id, title: row.title, sourceUrl: row.source_url, type: row.type };
 }
+
+/** Attaches the Telegram file_id Telegram assigned on upload, so future sends can reuse it instantly. */
+export async function setDeliveredItemFileId(id: string, fileId: string): Promise<void> {
+  await pool.query('UPDATE delivered_items SET file_id = $1 WHERE id = $2', [fileId, id]);
+}
+
+export interface CachedAudioItem {
+  id: string;
+  title: string;
+  fileId: string;
+}
+
+/** Titles of previously-delivered MP3s (with a cached file_id) matching `query` — powers inline mode. */
+export async function searchDeliveredAudio(query: string, limit = 20): Promise<CachedAudioItem[]> {
+  const { rows } = await pool.query<{ id: string; title: string; file_id: string }>(
+    `SELECT DISTINCT ON (title) id, title, file_id
+     FROM delivered_items
+     WHERE type = 'mp3' AND file_id IS NOT NULL AND title ILIKE $1
+     ORDER BY title, created_at DESC
+     LIMIT $2`,
+    [`%${query}%`, limit],
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title, fileId: r.file_id }));
+}

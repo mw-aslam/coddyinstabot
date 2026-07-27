@@ -2,9 +2,17 @@ import type { Context } from 'telegraf';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
 import { queueService } from '../services/QueueService';
-import { mainMenuKeyboard, menuText, qualityKeyboard, qualityText, queuedText, stageText } from '../services/UIService';
+import {
+  buildResultCaption,
+  mainMenuKeyboard,
+  menuText,
+  prettifyInstagramTitle,
+  qualityKeyboard,
+  qualityText,
+  queuedText,
+  stageText,
+} from '../services/UIService';
 import { FileTooLargeError, toUserMessage } from '../utils/errors';
-import { formatDuration, formatFileSize } from '../utils/formatters';
 import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
 import { prepareThumbnail } from '../utils/thumbnail';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
@@ -12,7 +20,7 @@ import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
 import { listFavorites } from '../database/favoriteRepository';
 import { downloadAndSendTrack } from './musicHandler';
-import { buildDeliveryActions, handleSaveFavorite, redeliverItem } from './deliveryHandler';
+import { buildDeliveryActions, cacheAudioFileId, handleSaveFavorite, redeliverItem } from './deliveryHandler';
 import type { DownloadResult, DownloadType, QualityOption, SessionData } from '../types';
 
 /** Routes every inline-button press to the right sub-handler based on its callback_data prefix. */
@@ -121,14 +129,17 @@ async function runDownload(
 
     // Cover art doesn't depend on the download result, so fetch it while yt-dlp/ffmpeg are busy.
     const thumbnailPromise = prepareThumbnail(info.thumbnail, tmpDir);
+    const botName = ctx.botInfo?.first_name ?? 'Instagram видео';
+    const { title: displayTitle, author } = prettifyInstagramTitle(info.title, info.uploader, botName);
 
     if (type === 'mp3') {
-      result = await instagramDownloader.downloadAudio(url, tmpDir, info.title);
+      result = await instagramDownloader.downloadAudio(url, tmpDir, displayTitle);
     } else if (type === 'video') {
-      result = await instagramDownloader.downloadVideo(url, quality, tmpDir, info.title);
+      result = await instagramDownloader.downloadVideo(url, quality, tmpDir, displayTitle);
     } else {
-      result = await instagramDownloader.downloadVideoWithAudio(url, quality, tmpDir, info.title);
+      result = await instagramDownloader.downloadVideoWithAudio(url, quality, tmpDir, displayTitle);
     }
+    result.author = author;
 
     const [fileSize, thumbnailPath] = await Promise.all([getFileSize(result.filePath), thumbnailPromise]);
     if (fileSize > MAX_FILE_SIZE_BYTES) {
@@ -141,9 +152,9 @@ async function runDownload(
     // Let the user grab just the audio from a delivered video without resending the link.
     const extractSessionId =
       type !== 'mp3' ? sessionService.create({ userId, chatId, url, info, type: 'mp3' }).id : undefined;
-    const actions = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: url, type }, extractSessionId);
+    const delivery = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: url, type }, extractSessionId);
 
-    await sendResult(ctx, chatId, result, actions);
+    await sendResult(ctx, chatId, result, delivery);
     await editStatus(ctx, session, '✅ Готово!');
 
     await logDownload({ userId, url, type, quality, status: 'success', fileSize: result.fileSize });
@@ -168,29 +179,22 @@ async function sendResult(
   ctx: Context,
   chatId: number,
   result: DownloadResult,
-  actions: Awaited<ReturnType<typeof buildDeliveryActions>>,
+  delivery: Awaited<ReturnType<typeof buildDeliveryActions>>,
 ): Promise<void> {
-  const caption = [
-    `✅ *${escapeCaption(result.title)}*`,
-    `📏 Размер: ${formatFileSize(result.fileSize)}`,
-    result.height ? `🎬 Разрешение: ${result.width ?? '?'}x${result.height}` : undefined,
-    `⏱ Длительность: ${formatDuration(result.duration)}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
-
+  const caption = buildResultCaption(result);
   const source = { source: result.filePath, filename: result.fileName };
   const thumbnail = result.thumbnailPath ? { source: result.thumbnailPath } : undefined;
 
   if (result.type === 'mp3') {
-    await ctx.telegram.sendAudio(chatId, source, {
+    const sent = await ctx.telegram.sendAudio(chatId, source, {
       caption,
       parse_mode: 'Markdown',
       title: result.title,
       duration: result.duration ? Math.round(result.duration) : undefined,
       thumbnail,
-      ...actions,
+      ...delivery.keyboard,
     });
+    await cacheAudioFileId(delivery.deliveredId, sent);
   } else {
     await ctx.telegram.sendVideo(chatId, source, {
       caption,
@@ -200,7 +204,7 @@ async function sendResult(
       duration: result.duration ? Math.round(result.duration) : undefined,
       supports_streaming: true,
       thumbnail,
-      ...actions,
+      ...delivery.keyboard,
     });
   }
 }
@@ -260,8 +264,4 @@ async function editStatus(
   } catch (err) {
     logger.debug('editMessageText failed (likely identical content)', { err: (err as Error).message });
   }
-}
-
-function escapeCaption(text: string): string {
-  return text.replace(/([_*[\]()`])/g, '\\$1');
 }
