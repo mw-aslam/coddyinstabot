@@ -20,22 +20,20 @@ import { logDownload } from '../database/downloadRepository';
 import type { DownloadResult, DownloadType } from '../types';
 
 /**
- * Records a successfully delivered file and builds the action-row keyboard (extract/save/share)
- * that goes under it. Every send path (Instagram video, music search, favorites, deep links)
- * funnels through here so "save" and "share" behave identically everywhere.
+ * Records a successfully delivered file and builds the action-row keyboard (extract/save) that
+ * goes under it. Every send path (Instagram/YouTube/TikTok video, music search, favorites)
+ * funnels through here so "save" behaves identically everywhere. Sharing itself is left to
+ * Telegram's native "forward", which already sends the real file.
  */
 export async function buildDeliveryActions(
-  ctx: Context,
+  _ctx: Context,
   item: { title: string; sourceUrl: string; type: DownloadType },
   extractSessionId?: string,
 ) {
   const deliveredId = nanoid(10);
   await createDeliveredItem({ id: deliveredId, title: item.title, sourceUrl: item.sourceUrl, type: item.type });
 
-  const botUsername = ctx.botInfo?.username;
-  const shareUrl = botUsername ? `https://t.me/${botUsername}?start=t_${deliveredId}` : undefined;
-
-  return { deliveredId, keyboard: resultActionsKeyboard({ deliveredId, extractSessionId, shareUrl }) };
+  return { deliveredId, keyboard: resultActionsKeyboard({ deliveredId, extractSessionId }) };
 }
 
 /** Caches the file_id Telegram just assigned to a sent audio, so inline mode can reuse it instantly. */

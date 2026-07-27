@@ -22,10 +22,12 @@ const BASE_ARGS = [
   '--user-agent',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
   // Works around YouTube's "Sign in to confirm you're not a bot" block on the default web/
-  // android clients — mweb is the one that still returns real (non-storyboard-only) formats
-  // without hitting that check, as of this writing. Re-check if YouTube changes this again.
+  // android clients. mweb alone is the combo that reliably avoids both that block AND a
+  // separate 403 that hits DASH (split video+audio) formats when tv's format list is mixed
+  // in — at the cost of capping video quality to whatever progressive format mweb exposes
+  // (usually 360p). Audio-only extraction is unaffected. Re-check if YouTube changes this.
   '--extractor-args',
-  'youtube:player_client=mweb,tv',
+  'youtube:player_client=mweb',
 ];
 
 /** Runs yt-dlp with the given args, enforcing a timeout and translating known failures. */

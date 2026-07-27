@@ -127,22 +127,19 @@ interface ResultActionsOptions {
   deliveredId: string;
   /** Present only for Instagram video/videoaudio results — offers a one-tap "just the song" button. */
   extractSessionId?: string;
-  shareUrl?: string;
 }
 
-/** Action row(s) attached under every delivered file: extract audio, save, share. */
+/**
+ * Action row(s) attached under every delivered file: extract audio, save.
+ * Sharing itself is left to Telegram's native "forward" — it already sends the real file,
+ * no custom deep link needed.
+ */
 export function resultActionsKeyboard(opts: ResultActionsOptions) {
-  const rows: ReturnType<typeof Markup.button.callback | typeof Markup.button.url>[][] = [];
+  const rows: ReturnType<typeof Markup.button.callback>[][] = [];
   if (opts.extractSessionId) {
     rows.push([Markup.button.callback('🎵 Скачать только песню', `extractaudio:${opts.extractSessionId}`)]);
   }
-  const actionRow: ReturnType<typeof Markup.button.callback | typeof Markup.button.url>[] = [
-    Markup.button.callback('❤️ Сохранить', `save:${opts.deliveredId}`),
-  ];
-  if (opts.shareUrl) {
-    actionRow.push(Markup.button.url('🔁 Поделиться', opts.shareUrl));
-  }
-  rows.push(actionRow);
+  rows.push([Markup.button.callback('❤️ Сохранить', `save:${opts.deliveredId}`)]);
   return Markup.inlineKeyboard(rows);
 }
 

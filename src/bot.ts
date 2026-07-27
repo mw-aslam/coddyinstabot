@@ -6,7 +6,6 @@ import { subscriptionMiddleware } from './middlewares/subscriptionMiddleware';
 import { startCommand } from './commands/start';
 import { helpCommand } from './commands/help';
 import { statsCommand } from './commands/stats';
-import { topCommand } from './commands/top';
 import { favoritesCommand } from './commands/favorites';
 import { linkHandler } from './handlers/linkHandler';
 import { callbackHandler } from './handlers/callbackHandler';
@@ -37,14 +36,9 @@ export function createBot(): Telegraf {
   bot.start(startCommand);
   bot.help(helpCommand);
   bot.command('stats', statsCommand);
-  bot.command('top', topCommand);
   bot.command('favorites', favoritesCommand);
 
   // Quick-access buttons under /start mirror the equivalent slash commands.
-  bot.action('nav:top', async (ctx) => {
-    await ctx.answerCbQuery();
-    await topCommand(ctx);
-  });
   bot.action('nav:favorites', async (ctx) => {
     await ctx.answerCbQuery();
     await favoritesCommand(ctx);
