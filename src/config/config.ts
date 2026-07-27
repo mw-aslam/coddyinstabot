@@ -36,7 +36,9 @@ export const config = {
 
   downloads: {
     maxConcurrentPerUser: int('MAX_CONCURRENT_DOWNLOADS_PER_USER', 2),
-    maxFileSizeMb: int('MAX_FILE_SIZE_MB', 50),
+    // 50MB is Telegram's cloud Bot API cap; a local Bot API server (TELEGRAM_API_ROOT set)
+    // raises that to 2000MB, so default higher automatically when one is configured.
+    maxFileSizeMb: int('MAX_FILE_SIZE_MB', process.env.TELEGRAM_API_ROOT ? 2000 : 50),
     processTimeoutMs: int('PROCESS_TIMEOUT_MS', 300_000),
     tmpDir: path.resolve(process.cwd(), process.env.TMP_DIR ?? './downloads/tmp'),
   },
@@ -62,6 +64,10 @@ export const config = {
   // AudD.io API token for Shazam-style recognition of voice messages/audio clips. Feature is
   // off (silently ignored) if unset.
   auddApiKey: process.env.AUDD_API_KEY,
+
+  // Base URL of a self-hosted Telegram Bot API server (see docker-compose's bot-api service).
+  // Unset means Telegraf talks to Telegram's cloud API, which caps uploads at 50MB.
+  telegramApiRoot: process.env.TELEGRAM_API_ROOT,
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;

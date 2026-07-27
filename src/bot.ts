@@ -14,7 +14,10 @@ import { inlineHandler } from './handlers/inlineHandler';
 import { isSubscribedToAll } from './services/SubscriptionService';
 
 export function createBot(): Telegraf {
-  const bot = new Telegraf(config.botToken);
+  const bot = new Telegraf(
+    config.botToken,
+    config.telegramApiRoot ? { telegram: { apiRoot: config.telegramApiRoot } } : undefined,
+  );
 
   bot.use(loggerMiddleware);
   registerErrorMiddleware(bot);
