@@ -151,6 +151,22 @@ docker compose up -d postgres
 npm run dev
 ```
 
+## Деплой на Render.com (бесплатно, без карты)
+
+1. Зарегистрируйтесь на [render.com](https://render.com) через GitHub — карта не нужна.
+2. **New +** → **Blueprint** → выберите этот репозиторий. Render прочитает `render.yaml` и сам
+   создаст веб-сервис (из `Dockerfile`) и бесплатную базу PostgreSQL.
+3. Когда попросит — заполните секретные переменные: `BOT_TOKEN`, `AUDD_API_KEY` (опционально),
+   `REQUIRED_CHANNELS` (опционально), `ADMIN_IDS` (опционально).
+4. После деплоя скопируйте URL сервиса (вида `https://coddyinstabot.onrender.com`).
+5. В настройках GitHub-репозитория: **Settings → Secrets and variables → Actions → Variables**
+   → добавьте `RENDER_APP_URL` со значением этого URL. Это нужно, чтобы workflow
+   `.github/workflows/keep-alive.yml` пинговал сервис каждые 10 минут и не давал ему "заснуть"
+   (бесплatный план Render засыпает после ~15 минут без запросов).
+
+> ⚠️ Бесплатная PostgreSQL на Render живёт 90 дней, потом Render попросит пересоздать базу
+> (данные при этом теряются, если не сделать бэкап заранее).
+
 ## Ограничения
 
 - Telegram Bot API принимает файлы до **50 МБ** через обычную отправку — при превышении бот

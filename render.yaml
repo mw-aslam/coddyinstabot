@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: coddyinstabot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: AUDD_API_KEY
+        sync: false
+      - key: REQUIRED_CHANNELS
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: coddyinstabot-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+
+databases:
+  - name: coddyinstabot-db
+    plan: free

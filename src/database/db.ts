@@ -2,14 +2,18 @@ import { Pool } from 'pg';
 import { config } from '../config/config';
 import { logger } from '../utils/logger';
 
+// Managed Postgres (Render, Railway, etc.) requires SSL; local/self-hosted Postgres typically doesn't.
+const ssl = process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined;
+
 export const pool = config.database.connectionString
-  ? new Pool({ connectionString: config.database.connectionString })
+  ? new Pool({ connectionString: config.database.connectionString, ssl })
   : new Pool({
       host: config.database.host,
       port: config.database.port,
       user: config.database.user,
       password: config.database.password,
       database: config.database.database,
+      ssl,
     });
 
 pool.on('error', (err) => {
