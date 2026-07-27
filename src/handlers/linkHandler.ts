@@ -13,8 +13,16 @@ import { toUserMessage } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { upsertUser } from '../database/userRepository';
 import { musicSearchHandler } from './musicHandler';
+import { favoritesCommand } from '../commands/favorites';
+import { helpCommand } from '../commands/help';
 
 const MAX_SEARCH_QUERY_LENGTH = 200;
+
+/** Text sent by the persistent bottom keyboard's buttons — handled here since they arrive as plain text. */
+const MENU_BUTTON_HANDLERS: Record<string, (ctx: Context) => Promise<void>> = {
+  '❤️ Избранное': favoritesCommand,
+  '❓ Помощь': helpCommand,
+};
 
 /**
  * Handles a plain-text message: an Instagram/YouTube/TikTok link goes through the
@@ -26,6 +34,13 @@ export async function linkHandler(ctx: Context): Promise<void> {
   if (!message || !('text' in message)) return;
 
   const text = message.text.trim();
+
+  const menuHandler = MENU_BUTTON_HANDLERS[text];
+  if (menuHandler) {
+    await menuHandler(ctx);
+    return;
+  }
+
   const url = extractInstagramUrl(text) ?? extractYouTubeUrl(text) ?? extractTikTokUrl(text);
 
   if (!url) {

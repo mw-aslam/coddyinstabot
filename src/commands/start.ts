@@ -1,6 +1,6 @@
 import type { Context } from 'telegraf';
 import { upsertUser } from '../database/userRepository';
-import { quickNavKeyboard, welcomeText } from '../services/UIService';
+import { persistentMenuKeyboard, welcomeText } from '../services/UIService';
 import { logger } from '../utils/logger';
 
 export async function startCommand(ctx: Context): Promise<void> {
@@ -10,5 +10,5 @@ export async function startCommand(ctx: Context): Promise<void> {
     );
   }
 
-  await ctx.replyWithMarkdown(welcomeText, quickNavKeyboard());
+  await ctx.replyWithMarkdown(welcomeText, persistentMenuKeyboard());
 }

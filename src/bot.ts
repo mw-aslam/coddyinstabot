@@ -41,16 +41,6 @@ export function createBot(): Telegraf {
   bot.command('stats', statsCommand);
   bot.command('favorites', favoritesCommand);
 
-  // Quick-access buttons under /start mirror the equivalent slash commands.
-  bot.action('nav:favorites', async (ctx) => {
-    await ctx.answerCbQuery();
-    await favoritesCommand(ctx);
-  });
-  bot.action('nav:help', async (ctx) => {
-    await ctx.answerCbQuery();
-    await helpCommand(ctx);
-  });
-
   bot.on('text', linkHandler);
   bot.on(['voice', 'audio', 'video_note'], recognizeHandler);
   bot.on('callback_query', callbackHandler);

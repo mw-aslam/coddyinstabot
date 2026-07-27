@@ -38,6 +38,10 @@ export async function callbackHandler(ctx: Context): Promise<void> {
     }
     if (action === 'fav') {
       await ctx.answerCbQuery();
+      if (param === 'cancel') {
+        await ctx.deleteMessage().catch(() => undefined);
+        return;
+      }
       await handleFavoriteRedownload(ctx, Number.parseInt(param, 10));
       return;
     }

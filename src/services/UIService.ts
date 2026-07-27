@@ -42,31 +42,27 @@ export const welcomeText = [
 export const helpText = [
   '❓ *Как пользоваться ботом*',
   '',
-  '*Скачивание из Instagram*',
-  '1️⃣ Отправь ссылку на Reels, пост или видео.',
+  '*Скачивание* (Instagram / YouTube / TikTok)',
+  '1️⃣ Отправь ссылку на видео/Reels/пост/Shorts.',
   '2️⃣ Выбери, что скачать: видео, MP3 или видео со звуком.',
   '3️⃣ При необходимости выбери качество.',
   '4️⃣ Дождись обработки — бот пришлёт готовый файл.',
   '',
-  '*Поиск музыки*',
+  '*Музыка*',
   '🎵 Напиши название трека или исполнителя текстом, без ссылки — найду на YouTube и пришлю MP3.',
+  '🎧 Или пришли голосовое/аудио с играющей песней — распознаю и найду трек.',
   '💡 Для точного результата указывай исполнителя вместе с названием.',
   '',
-  '*Полезные команды*',
-  '❤️ Кнопка «Сохранить» под файлом добавляет его в /favorites.',
-  '🔁 Кнопка «Поделиться» даёт ссылку, по которой друг сразу получит тот же файл.',
-  '🔥 /top — самые популярные запросы за неделю.',
+  '*Полезное*',
+  '❤️ Кнопка «Сохранить» под файлом добавляет его в Избранное (кнопка снизу).',
+  '↪️ Чтобы поделиться файлом с другом — просто перешли сообщение (кнопка Telegram).',
   '',
-  `⚠️ Ограничение Telegram: файл не может быть больше 50 МБ.`,
   '⚙️ Одновременно можно запустить не более 2 загрузок — остальные встанут в очередь.',
 ].join('\n');
 
-/** Quick-access row under the welcome message so common commands don't require typing. */
-export function quickNavKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🔥 Топ', 'nav:top'), Markup.button.callback('❤️ Избранное', 'nav:favorites')],
-    [Markup.button.callback('❓ Помощь', 'nav:help')],
-  ]);
+/** Persistent bottom keyboard — stays visible across the whole chat, no commands to remember. */
+export function persistentMenuKeyboard() {
+  return Markup.keyboard([['❤️ Избранное', '❓ Помощь']]).resize();
 }
 
 export function menuText(title: string): string {
@@ -175,6 +171,7 @@ export function favoritesKeyboard(rows: FavoriteRow[]) {
   const buttons = rows.map((row) => [
     Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 45)}`, `fav:${row.id}`),
   ]);
+  buttons.push([Markup.button.callback('❌ Закрыть', 'fav:cancel')]);
   return Markup.inlineKeyboard(buttons);
 }
 
