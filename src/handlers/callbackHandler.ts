@@ -4,6 +4,8 @@ import { sessionService } from '../services/SessionService';
 import { queueService } from '../services/QueueService';
 import {
   buildResultCaption,
+  favoritesKeyboard,
+  favoritesText,
   mainMenuKeyboard,
   menuText,
   prettifyInstagramTitle,
@@ -18,7 +20,7 @@ import { prepareThumbnail } from '../utils/thumbnail';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
-import { listFavorites } from '../database/favoriteRepository';
+import { listFavorites, removeFavorite } from '../database/favoriteRepository';
 import { downloadAndSendTrack } from './musicHandler';
 import { buildDeliveryActions, cacheAudioFileId, handleSaveFavorite, redeliverItem } from './deliveryHandler';
 import type { DownloadResult, DownloadType, QualityOption, SessionData } from '../types';
@@ -43,6 +45,10 @@ export async function callbackHandler(ctx: Context): Promise<void> {
         return;
       }
       await handleFavoriteRedownload(ctx, Number.parseInt(param, 10));
+      return;
+    }
+    if (action === 'favdel') {
+      await handleFavoriteDelete(ctx, Number.parseInt(param, 10));
       return;
     }
 
@@ -251,6 +257,23 @@ async function handleFavoriteRedownload(ctx: Context, favoriteId: number): Promi
     return;
   }
   await redeliverItem(ctx, { id: `fav-${favorite.id}`, title: favorite.title, sourceUrl: favorite.sourceUrl, type: favorite.type });
+}
+
+/** Handles a "🗑" tap: removes the item and refreshes the /favorites list in place. */
+async function handleFavoriteDelete(ctx: Context, favoriteId: number): Promise<void> {
+  if (!ctx.from) return;
+  await removeFavorite(ctx.from.id, favoriteId);
+  await ctx.answerCbQuery('🗑 Удалено');
+
+  const rows = await listFavorites(ctx.from.id);
+  const query = ctx.callbackQuery;
+  if (!query?.message) return;
+  await ctx.telegram
+    .editMessageText(query.message.chat.id, query.message.message_id, undefined, favoritesText(rows), {
+      parse_mode: 'Markdown',
+      ...(rows.length > 0 ? favoritesKeyboard(rows) : {}),
+    })
+    .catch(() => undefined);
 }
 
 async function editStatus(

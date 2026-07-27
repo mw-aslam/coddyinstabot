@@ -28,13 +28,15 @@ export function searchingText(query: string): string {
 export const welcomeText = [
   '👋 *Добро пожаловать!*',
   '',
-  'Я — бот для скачивания контента из Instagram и поиска музыки. Быстро, без рекламы, без лишних шагов.',
+  'Я — бот для скачивания видео из *Instagram, YouTube и TikTok* и поиска музыки. Быстро, без рекламы, без лишних шагов.',
   '',
-  '📥 *Пришли ссылку* на Reels, пост или видео —',
+  '📥 *Пришли ссылку* на Reels, пост, YouTube-видео/Shorts или TikTok —',
   'предложу скачать видео, MP3 или видео со звуком в нужном качестве.',
   '',
   '🎵 *Или просто напиши название трека* — например «Macan Черное платье» —',
   'найду его на YouTube и пришлю в MP3.',
+  '',
+  '🎧 *Или пришли голосовое* с играющей песней — распознаю и найду трек.',
   '',
   '👉 Попробуй прямо сейчас: отправь ссылку или название песни.',
 ].join('\n');
@@ -164,12 +166,13 @@ export function topText(rows: TopQueryRow[]): string {
 
 export function favoritesText(rows: FavoriteRow[]): string {
   if (rows.length === 0) return '❤️ У тебя пока нет сохранённых треков/видео. Сохраняй их кнопкой «❤️ Сохранить» под результатом.';
-  return ['❤️ *Твоё избранное*', '', 'Нажми, чтобы скачать заново:'].join('\n');
+  return ['❤️ *Твоё избранное*', '', 'Нажми на название, чтобы скачать заново, или 🗑 чтобы удалить:'].join('\n');
 }
 
 export function favoritesKeyboard(rows: FavoriteRow[]) {
   const buttons = rows.map((row) => [
-    Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 45)}`, `fav:${row.id}`),
+    Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 40)}`, `fav:${row.id}`),
+    Markup.button.callback('🗑', `favdel:${row.id}`),
   ]);
   buttons.push([Markup.button.callback('❌ Закрыть', 'fav:cancel')]);
   return Markup.inlineKeyboard(buttons);
