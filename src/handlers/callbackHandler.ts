@@ -3,6 +3,7 @@ import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
 import { queueService } from '../services/QueueService';
 import {
+  extractAudioKeyboard,
   mainMenuKeyboard,
   menuText,
   qualityKeyboard,
@@ -13,9 +14,11 @@ import {
 import { FileTooLargeError, toUserMessage } from '../utils/errors';
 import { formatDuration, formatFileSize } from '../utils/formatters';
 import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
+import { prepareThumbnail } from '../utils/thumbnail';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
+import { downloadAndSendTrack } from './musicHandler';
 import type { DownloadResult, DownloadType, QualityOption, SessionData } from '../types';
 
 /** Routes every inline-button press to the right sub-handler based on its callback_data prefix. */
@@ -40,6 +43,12 @@ export async function callbackHandler(ctx: Context): Promise<void> {
     } else if (action === 'back') {
       await ctx.answerCbQuery();
       await showMainMenu(ctx, session);
+    } else if (action === 'track') {
+      await ctx.answerCbQuery();
+      await handleTrackSelection(ctx, session, value);
+    } else if (action === 'extractaudio') {
+      await ctx.answerCbQuery();
+      await handleExtractAudio(ctx, session);
     }
   } catch (err) {
     logger.error('Callback handling failed', { err: (err as Error).message, action });
@@ -118,8 +127,15 @@ async function runDownload(
       throw new FileTooLargeError(fileSize / (1024 * 1024), config.downloads.maxFileSizeMb);
     }
 
+    result.thumbnailPath = await prepareThumbnail(info.thumbnail, tmpDir);
+
     await editStatus(ctx, session, stageText('upload'));
-    await sendResult(ctx, chatId, result);
+
+    // Let the user grab just the audio from a delivered video without resending the link.
+    const extractSessionId =
+      type !== 'mp3' ? sessionService.create({ userId, chatId, url, info, type: 'mp3' }).id : undefined;
+
+    await sendResult(ctx, chatId, result, extractSessionId);
     await editStatus(ctx, session, '✅ Готово!');
 
     await logDownload({ userId, url, type, quality, status: 'success', fileSize: result.fileSize });
@@ -140,7 +156,12 @@ async function runDownload(
   }
 }
 
-async function sendResult(ctx: Context, chatId: number, result: DownloadResult): Promise<void> {
+async function sendResult(
+  ctx: Context,
+  chatId: number,
+  result: DownloadResult,
+  extractSessionId?: string,
+): Promise<void> {
   const caption = [
     `✅ *${escapeCaption(result.title)}*`,
     `📏 Размер: ${formatFileSize(result.fileSize)}`,
@@ -151,6 +172,7 @@ async function sendResult(ctx: Context, chatId: number, result: DownloadResult):
     .join('\n');
 
   const source = { source: result.filePath, filename: result.fileName };
+  const thumbnail = result.thumbnailPath ? { source: result.thumbnailPath } : undefined;
 
   if (result.type === 'mp3') {
     await ctx.telegram.sendAudio(chatId, source, {
@@ -158,6 +180,7 @@ async function sendResult(ctx: Context, chatId: number, result: DownloadResult):
       parse_mode: 'Markdown',
       title: result.title,
       duration: result.duration ? Math.round(result.duration) : undefined,
+      thumbnail,
     });
   } else {
     await ctx.telegram.sendVideo(chatId, source, {
@@ -167,8 +190,38 @@ async function sendResult(ctx: Context, chatId: number, result: DownloadResult):
       height: result.height,
       duration: result.duration ? Math.round(result.duration) : undefined,
       supports_streaming: true,
+      thumbnail,
+      ...(extractSessionId ? extractAudioKeyboard(extractSessionId) : {}),
     });
   }
+}
+
+/** Handles a "🎵" button picked from a music-search track list. */
+async function handleTrackSelection(ctx: Context, session: SessionData, value: string): Promise<void> {
+  if (value === 'cancel') {
+    await editStatus(ctx, session, '❌ Отменено.');
+    sessionService.delete(session.id);
+    return;
+  }
+
+  const index = Number.parseInt(value, 10);
+  const track = session.musicResults?.[index];
+  if (!track) {
+    await editStatus(ctx, session, '⚠️ Не удалось найти выбранный трек, попробуйте снова.');
+    sessionService.delete(session.id);
+    return;
+  }
+
+  await downloadAndSendTrack(ctx, session, track);
+}
+
+/** Handles the "🎵 Скачать только песню" button attached to a delivered Instagram video. */
+async function handleExtractAudio(ctx: Context, session: SessionData): Promise<void> {
+  if (!session.info) return;
+  const statusMessage = await ctx.reply(stageText('download'));
+  const updated = sessionService.update(session.id, { statusMessageId: statusMessage.message_id });
+  if (!updated) return;
+  await processDownload(ctx, updated, 'best');
 }
 
 async function editStatus(

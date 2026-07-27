@@ -36,6 +36,16 @@ export interface DownloadResult {
   width?: number;
   height?: number;
   type: DownloadType;
+  thumbnailPath?: string;
+}
+
+/** One candidate track returned by a music search, before it's downloaded. */
+export interface MusicTrack {
+  title: string;
+  uploader?: string;
+  duration?: number;
+  url: string;
+  thumbnail?: string;
 }
 
 export interface ProbeResult {
@@ -56,4 +66,6 @@ export interface SessionData {
   info?: InstagramMediaInfo;
   type?: DownloadType;
   createdAt: number;
+  musicQuery?: string;
+  musicResults?: MusicTrack[];
 }

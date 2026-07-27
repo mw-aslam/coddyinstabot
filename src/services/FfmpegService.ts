@@ -118,6 +118,20 @@ export class FfmpegService {
     ]);
   }
 
+  /** Resizes an arbitrary image to fit Telegram's thumbnail limits (<=320px per side, JPEG). */
+  async resizeThumbnail(inputPath: string, outputPath: string): Promise<void> {
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-vf',
+      "scale='min(320,iw)':'min(320,ih)':force_original_aspect_ratio=decrease",
+      '-vframes',
+      '1',
+      outputPath,
+    ]);
+  }
+
   /** Verifies the configured ffmpeg/ffprobe binaries are runnable. */
   async checkAvailable(): Promise<boolean> {
     try {

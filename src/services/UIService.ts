@@ -1,5 +1,6 @@
 import { Markup } from 'telegraf';
-import type { QualityOption } from '../types';
+import type { MusicTrack, QualityOption } from '../types';
+import { formatDuration } from '../utils/formatters';
 
 export type Stage = 'analyze' | 'download' | 'convert' | 'upload';
 
@@ -23,27 +24,31 @@ export function searchingText(query: string): string {
 }
 
 export const welcomeText = [
-  '👋 Привет! Я скачиваю видео из *Instagram*.',
+  '👋 *Добро пожаловать!*',
   '',
-  'Просто отправь мне ссылку на:',
-  '🎥 Reels',
-  '📮 Пост',
-  '📹 Видео',
+  'Я — бот для скачивания контента из Instagram и поиска музыки. Быстро, без рекламы, без лишних шагов.',
   '',
-  'И я предложу скачать видео, только звук (MP3) или видео со звуком в нужном качестве.',
+  '📥 *Пришли ссылку* на Reels, пост или видео —',
+  'предложу скачать видео, MP3 или видео со звуком в нужном качестве.',
   '',
-  '🎵 А ещё можно просто написать название песни или исполнителя — пришлю трек в MP3.',
+  '🎵 *Или просто напиши название трека* — например «Macan Черное платье» —',
+  'найду его на YouTube и пришлю в MP3.',
+  '',
+  '👉 Попробуй прямо сейчас: отправь ссылку или название песни.',
 ].join('\n');
 
 export const helpText = [
   '❓ *Как пользоваться ботом*',
   '',
-  '1️⃣ Отправь ссылку на Instagram Reels/пост/видео.',
+  '*Скачивание из Instagram*',
+  '1️⃣ Отправь ссылку на Reels, пост или видео.',
   '2️⃣ Выбери, что скачать: видео, MP3 или видео со звуком.',
   '3️⃣ При необходимости выбери качество.',
   '4️⃣ Дождись обработки — бот пришлёт готовый файл.',
   '',
-  '🎵 Хочешь просто песню — напиши название трека или исполнителя текстом, без ссылки.',
+  '*Поиск музыки*',
+  '🎵 Напиши название трека или исполнителя текстом, без ссылки — найду на YouTube и пришлю MP3.',
+  '💡 Для точного результата указывай исполнителя вместе с названием.',
   '',
   `⚠️ Ограничение Telegram: файл не может быть больше 50 МБ.`,
   '⚙️ Одновременно можно запустить не более 2 загрузок — остальные встанут в очередь.',
@@ -87,4 +92,27 @@ export function qualityKeyboard(sessionId: string, qualities: QualityOption[]) {
 /** Escapes the handful of characters that break Telegram legacy Markdown parsing. */
 export function escapeMarkdown(text: string): string {
   return text.replace(/([_*[\]()`])/g, '\\$1');
+}
+
+export function trackPickerText(query: string, count: number): string {
+  return [`🎵 Нашёл ${count} вариант(ов) для «${escapeMarkdown(query)}»:`, '', 'Выбери нужный:'].join('\n');
+}
+
+/** One button per candidate track — title truncated so the row stays readable. */
+export function trackPickerKeyboard(sessionId: string, tracks: MusicTrack[]) {
+  const rows = tracks.map((track, index) => {
+    const label = `🎵 ${truncate(track.title, 40)}${track.duration ? ` (${formatDuration(track.duration)})` : ''}`;
+    return [Markup.button.callback(label, `track:${sessionId}:${index}`)];
+  });
+  rows.push([Markup.button.callback('❌ Отмена', `track:${sessionId}:cancel`)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+/** Shown under a delivered video so the user can grab just the audio without resending the link. */
+export function extractAudioKeyboard(sessionId: string) {
+  return Markup.inlineKeyboard([[Markup.button.callback('🎵 Скачать только песню', `extractaudio:${sessionId}`)]]);
+}
+
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
