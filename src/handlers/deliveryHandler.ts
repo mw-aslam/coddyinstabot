@@ -21,7 +21,7 @@ import type { DownloadResult, DownloadType } from '../types';
 
 /**
  * Records a successfully delivered file and builds the action-row keyboard (extract/save) that
- * goes under it. Every send path (Instagram/YouTube/TikTok video, music search, favorites)
+ * goes under it. Every send path (Instagram/YouTube video, music search, favorites)
  * funnels through here so "save" behaves identically everywhere. Sharing itself is left to
  * Telegram's native "forward", which already sends the real file.
  */

@@ -32,11 +32,3 @@ export function extractYouTubeUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-const TIKTOK_URL_REGEX = /https?:\/\/(?:(?:www|vm|vt|m)\.)?tiktok\.com\/[^\s]+/i;
-
-/** Extracts the first TikTok URL found in a free-text message, if any. */
-export function extractTikTokUrl(text: string): string | null {
-  const match = text.match(TIKTOK_URL_REGEX);
-  if (!match) return null;
-  return match[0].replace(/[)\]]+$/, '');
-}

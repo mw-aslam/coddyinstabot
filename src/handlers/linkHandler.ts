@@ -4,7 +4,6 @@ import { sessionService } from '../services/SessionService';
 import { mainMenuKeyboard, menuText, stageText } from '../services/UIService';
 import {
   extractInstagramUrl,
-  extractTikTokUrl,
   extractYouTubeUrl,
   looksLikeUnsupportedInstagramLink,
   looksLikeUrl,
@@ -25,8 +24,8 @@ const MENU_BUTTON_HANDLERS: Record<string, (ctx: Context) => Promise<void>> = {
 };
 
 /**
- * Handles a plain-text message: an Instagram/YouTube/TikTok link goes through the
- * analyze+menu flow (yt-dlp supports all three the same way), anything else that isn't
+ * Handles a plain-text message: an Instagram/YouTube link goes through the
+ * analyze+menu flow (yt-dlp supports both the same way), anything else that isn't
  * a link is treated as a song/artist search query.
  */
 export async function linkHandler(ctx: Context): Promise<void> {
@@ -41,7 +40,7 @@ export async function linkHandler(ctx: Context): Promise<void> {
     return;
   }
 
-  const url = extractInstagramUrl(text) ?? extractYouTubeUrl(text) ?? extractTikTokUrl(text);
+  const url = extractInstagramUrl(text) ?? extractYouTubeUrl(text);
 
   if (!url) {
     if (looksLikeUnsupportedInstagramLink(text)) {
