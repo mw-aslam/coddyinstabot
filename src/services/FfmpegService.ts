@@ -114,6 +114,27 @@ export class FfmpegService {
       '-c:a',
       'aac',
       '-shortest',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+  }
+
+  /**
+   * Rewrites an MP4's moov atom to the front of the file without re-encoding.
+   * Without this, players (e.g. Telegram) can start audio before the video index
+   * is available and render the video as a frozen/static frame until fully downloaded.
+   */
+  async faststart(inputPath: string, outputPath: string): Promise<void> {
+    logger.debug('Remuxing for faststart', { inputPath, outputPath });
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-c',
+      'copy',
+      '-movflags',
+      '+faststart',
       outputPath,
     ]);
   }

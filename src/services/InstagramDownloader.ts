@@ -180,6 +180,12 @@ export class InstagramDownloader {
       }
     }
 
+    if (path.extname(filePath).toLowerCase() === '.mp4') {
+      const faststartPath = path.join(outDir, 'faststart.mp4');
+      await ffmpegService.faststart(filePath, faststartPath);
+      filePath = faststartPath;
+    }
+
     const stat = await fs.stat(filePath);
     const safeTitle = sanitizeFileName(title);
 
