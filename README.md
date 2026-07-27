@@ -1,0 +1,146 @@
+# Instagram Downloader Telegram Bot
+
+Telegram-бот на TypeScript/Telegraf для скачивания видео из Instagram (Reels, посты, видео) —
+как видео, как MP3 или как видео с гарантированной звуковой дорожкой, с выбором качества.
+
+## Возможности
+
+- Определение Instagram-ссылки в сообщении и анализ через `yt-dlp`.
+- Меню: 🎥 Видео / 🎵 MP3 / 📹 Видео + звук / ❌ Отмена.
+- Выбор качества: 360p / 480p / 720p / 1080p (если доступно) / лучшее.
+- Конвертация в MP3 и склейка видео+аудио через FFmpeg (с фолбэком, если у выбранного
+  формата не оказалось звука).
+- Один статусный месседж, который редактируется по стадиям: анализ → скачивание →
+  конвертация → отправка.
+- Понятные сообщения об ошибках (приватный аккаунт, видео удалено, файл слишком большой,
+  сеть/таймаут).
+- Очередь на пользователя: не более `MAX_CONCURRENT_DOWNLOADS_PER_USER` (по умолчанию 2)
+  одновременных загрузок, остальное — в очередь.
+- История загрузок и пользователи — в PostgreSQL.
+- Логирование в консоль и файлы (`logs/combined.log`, `logs/error.log`) через winston.
+
+## Структура проекта
+
+```
+src/
+  commands/     — /start, /help
+  handlers/     — обработка текстовых сообщений и inline-кнопок
+  services/     — InstagramDownloader, FfmpegService, QueueService, SessionService, UIService
+  middlewares/  — логирование, глобальная обработка ошибок
+  config/       — чтение .env
+  database/     — pg pool, миграции, репозитории
+  utils/        — логгер, ошибки, валидаторы, форматтеры, работа с файлами
+  types/        — общие типы
+```
+
+## Требования
+
+| Инструмент | Зачем | Проверить |
+|---|---|---|
+| Node.js ≥ 18 | сам бот | `node -v` |
+| yt-dlp | скачивание из Instagram | `yt-dlp --version` |
+| ffmpeg / ffprobe | конвертация в MP3, склейка видео+аудио, метаданные | `ffmpeg -version` |
+| PostgreSQL | пользователи и история загрузок | `psql --version` |
+
+### Установка yt-dlp и ffmpeg
+
+**Windows (winget):**
+```powershell
+winget install yt-dlp.yt-dlp
+winget install Gyan.FFmpeg
+```
+
+**macOS:**
+```bash
+brew install yt-dlp ffmpeg
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get install ffmpeg
+sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+sudo chmod a+rx /usr/local/bin/yt-dlp
+```
+
+После установки **перезапустите терминал**, чтобы обновлённый PATH подхватился. Если бинарники
+не на PATH (или их несколько версий), укажите точный путь в `.env` через `YTDLP_PATH` /
+`FFMPEG_PATH` / `FFPROBE_PATH`.
+
+## Настройка
+
+1. Скопируйте `.env.example` в `.env` и заполните:
+   - `BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather).
+   - `DATABASE_URL` (или `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`) — доступ к PostgreSQL.
+   - При необходимости — пути к бинарникам и лимиты загрузок.
+
+2. Создайте базу данных (если её ещё нет):
+   ```sql
+   CREATE DATABASE instabot;
+   ```
+   Таблицы (`users`, `downloads`) бот создаёт сам при старте (миграции идемпотентны).
+
+   > ⚠️ Если у вас уже установлен локальный PostgreSQL (например, как служба Windows), он,
+   > скорее всего, тоже слушает порт 5432. В этом случае либо используйте его напрямую
+   > (создав в нём базу `instabot`), либо поменяйте порт Postgres-контейнера в
+   > `docker-compose.yml` (например, на `5433:5432`) и обновите `DATABASE_URL`.
+
+## Запуск локально (npm)
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` поднимает бота через `ts-node-dev` с автоперезапуском при изменении файлов.
+Для продакшен-сборки:
+
+```bash
+npm run build
+npm start
+```
+
+При старте бот сам проверяет наличие `yt-dlp`/`ffmpeg`/`ffprobe` и пишет предупреждение в лог,
+если чего-то не хватает — но не падает, чтобы `/start` и `/help` работали в любом случае.
+
+## Запуск через Docker
+
+Полностью в контейнерах (бот + PostgreSQL, yt-dlp и ffmpeg уже внутри образа):
+
+```bash
+docker compose up -d --build
+```
+
+Только база данных в Docker, а бот — локально через `npm run dev`:
+
+```bash
+docker compose up -d postgres
+npm run dev
+```
+
+## Ограничения
+
+- Telegram Bot API принимает файлы до **50 МБ** через обычную отправку — при превышении бот
+  попросит выбрать качество ниже (лимит настраивается через `MAX_FILE_SIZE_MB`).
+- Приватные аккаунты недоступны для скачивания — Instagram их не отдаёт анонимно.
+- Каждый пользователь может держать не более `MAX_CONCURRENT_DOWNLOADS_PER_USER` активных
+  загрузок одновременно; остальные становятся в очередь и стартуют по мере освобождения слотов.
+
+## Как это работает вкратце
+
+1. `linkHandler` находит Instagram-ссылку в тексте, шлёт `⏳ Анализ ссылки...` и вызывает
+   `InstagramDownloader.analyze()` (`yt-dlp -j`), затем редактирует это же сообщение в меню.
+2. `callbackHandler` обрабатывает нажатия: выбор типа → (для видео) выбор качества →
+   `QueueService.run()` ставит задачу в очередь пользователя и выполняет скачивание.
+3. `InstagramDownloader` качает нужный формат через `yt-dlp -f ...`; если для варианта
+   "видео + звук" итоговый файл оказался без звука, отдельно докачивает лучший аудиопоток и
+   склеивает через `FfmpegService.mergeVideoAudio` (`ffmpeg -c:v copy -c:a aac`). Для MP3 —
+   качает `bestaudio` и конвертирует через `FfmpegService.convertToMp3` (`libmp3lame`).
+4. Итоговый файл проверяется через `ffprobe` (разрешение/длительность), при превышении лимита
+   размера — понятная ошибка. Файл отправляется, статусное сообщение обновляется на `✅ Готово!`,
+   временная папка удаляется, запись пишется в таблицу `downloads`.
+
+## Логи
+
+- `logs/combined.log` — все события.
+- `logs/error.log` — только ошибки.
+- Уровень логирования — `LOG_LEVEL` в `.env` (`debug`/`info`/`warn`/`error`).

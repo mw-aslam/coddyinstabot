@@ -1,0 +1,50 @@
+import 'dotenv/config';
+import path from 'node:path';
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function int(name: string, fallback: number): number {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+export const config = {
+  botToken: required('BOT_TOKEN'),
+
+  database: {
+    connectionString: process.env.DATABASE_URL,
+    host: process.env.PGHOST ?? 'localhost',
+    port: int('PGPORT', 5432),
+    user: process.env.PGUSER ?? 'postgres',
+    password: process.env.PGPASSWORD ?? 'postgres',
+    database: process.env.PGDATABASE ?? 'instabot',
+  },
+
+  binaries: {
+    ytDlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
+    ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
+    ffprobePath: process.env.FFPROBE_PATH ?? 'ffprobe',
+  },
+
+  downloads: {
+    maxConcurrentPerUser: int('MAX_CONCURRENT_DOWNLOADS_PER_USER', 2),
+    maxFileSizeMb: int('MAX_FILE_SIZE_MB', 50),
+    processTimeoutMs: int('PROCESS_TIMEOUT_MS', 300_000),
+    tmpDir: path.resolve(process.cwd(), process.env.TMP_DIR ?? './downloads/tmp'),
+  },
+
+  logging: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    dir: path.resolve(process.cwd(), process.env.LOG_DIR ?? './logs'),
+  },
+} as const;
+
+export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;
