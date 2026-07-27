@@ -58,6 +58,10 @@ export const config = {
     .split(',')
     .map((s) => Number.parseInt(s.trim(), 10))
     .filter((n) => Number.isFinite(n)),
+
+  // AudD.io API token for Shazam-style recognition of voice messages/audio clips. Feature is
+  // off (silently ignored) if unset.
+  auddApiKey: process.env.AUDD_API_KEY,
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;

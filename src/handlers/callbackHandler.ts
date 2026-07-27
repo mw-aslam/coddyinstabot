@@ -119,6 +119,9 @@ async function runDownload(
   try {
     await editStatus(ctx, session, stageText('download'));
 
+    // Cover art doesn't depend on the download result, so fetch it while yt-dlp/ffmpeg are busy.
+    const thumbnailPromise = prepareThumbnail(info.thumbnail, tmpDir);
+
     if (type === 'mp3') {
       result = await instagramDownloader.downloadAudio(url, tmpDir, info.title);
     } else if (type === 'video') {
@@ -127,12 +130,11 @@ async function runDownload(
       result = await instagramDownloader.downloadVideoWithAudio(url, quality, tmpDir, info.title);
     }
 
-    const fileSize = await getFileSize(result.filePath);
+    const [fileSize, thumbnailPath] = await Promise.all([getFileSize(result.filePath), thumbnailPromise]);
     if (fileSize > MAX_FILE_SIZE_BYTES) {
       throw new FileTooLargeError(fileSize / (1024 * 1024), config.downloads.maxFileSizeMb);
     }
-
-    result.thumbnailPath = await prepareThumbnail(info.thumbnail, tmpDir);
+    result.thumbnailPath = thumbnailPath;
 
     await editStatus(ctx, session, stageText('upload'));
 

@@ -132,6 +132,23 @@ export class FfmpegService {
     ]);
   }
 
+  /** Trims audio/video to its first `seconds` and converts it to MP3 — used before sending a clip off for recognition. */
+  async trimToClip(inputPath: string, outputPath: string, seconds = 15): Promise<void> {
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-t',
+      String(seconds),
+      '-vn',
+      '-acodec',
+      'libmp3lame',
+      '-ar',
+      '44100',
+      outputPath,
+    ]);
+  }
+
   /** Verifies the configured ffmpeg/ffprobe binaries are runnable. */
   async checkAvailable(): Promise<boolean> {
     try {

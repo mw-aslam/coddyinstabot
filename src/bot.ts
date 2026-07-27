@@ -10,6 +10,7 @@ import { topCommand } from './commands/top';
 import { favoritesCommand } from './commands/favorites';
 import { linkHandler } from './handlers/linkHandler';
 import { callbackHandler } from './handlers/callbackHandler';
+import { recognizeHandler } from './handlers/recognizeHandler';
 import { isSubscribedToAll } from './services/SubscriptionService';
 
 export function createBot(): Telegraf {
@@ -39,6 +40,7 @@ export function createBot(): Telegraf {
   bot.command('favorites', favoritesCommand);
 
   bot.on('text', linkHandler);
+  bot.on(['voice', 'audio', 'video_note'], recognizeHandler);
   bot.on('callback_query', callbackHandler);
 
   return bot;

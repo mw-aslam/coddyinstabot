@@ -54,6 +54,9 @@ export class MusicSearchService {
 
   /** Downloads a previously resolved track and converts it to MP3, with cover art if available. */
   async downloadTrackMp3(track: MusicTrack, outDir: string): Promise<DownloadResult> {
+    // Cover art is independent of the audio itself — fetch it while yt-dlp/ffmpeg are busy instead of after.
+    const thumbnailPromise = prepareThumbnail(track.thumbnail, outDir);
+
     const outputTemplate = path.join(outDir, 'source.%(ext)s');
     await runYtDlp(['-f', 'bestaudio/best', '-o', outputTemplate, track.url]);
 
@@ -64,9 +67,11 @@ export class MusicSearchService {
     const mp3Path = path.join(outDir, `${sanitizeFileName(track.title)}.mp3`);
     await ffmpegService.convertToMp3(sourceFile, mp3Path, track.title, artist);
 
-    const stat = await fs.stat(mp3Path);
-    const probe = await ffmpegService.probe(mp3Path);
-    const thumbnailPath = await prepareThumbnail(track.thumbnail, outDir);
+    const [stat, probe, thumbnailPath] = await Promise.all([
+      fs.stat(mp3Path),
+      ffmpegService.probe(mp3Path),
+      thumbnailPromise,
+    ]);
 
     return {
       filePath: mp3Path,
