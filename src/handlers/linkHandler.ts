@@ -2,12 +2,18 @@ import type { Context } from 'telegraf';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
 import { mainMenuKeyboard, menuText, stageText } from '../services/UIService';
-import { extractInstagramUrl, looksLikeUnsupportedInstagramLink } from '../utils/validators';
+import { extractInstagramUrl, looksLikeUnsupportedInstagramLink, looksLikeUrl } from '../utils/validators';
 import { toUserMessage } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { upsertUser } from '../database/userRepository';
+import { musicSearchHandler } from './musicHandler';
 
-/** Handles a plain-text message: looks for an Instagram link and, if found, analyzes it. */
+const MAX_SEARCH_QUERY_LENGTH = 200;
+
+/**
+ * Handles a plain-text message: an Instagram link goes through the analyze+menu flow,
+ * anything else that isn't a link is treated as a song/artist search query.
+ */
 export async function linkHandler(ctx: Context): Promise<void> {
   const message = ctx.message;
   if (!message || !('text' in message)) return;
@@ -18,7 +24,12 @@ export async function linkHandler(ctx: Context): Promise<void> {
   if (!url) {
     if (looksLikeUnsupportedInstagramLink(text)) {
       await ctx.reply('🚫 Не удалось распознать ссылку. Отправьте ссылку вида instagram.com/reel/... или instagram.com/p/...');
+      return;
     }
+    if (text.startsWith('/') || looksLikeUrl(text) || text.length === 0 || text.length > MAX_SEARCH_QUERY_LENGTH) {
+      return;
+    }
+    await musicSearchHandler(ctx, text);
     return;
   }
 

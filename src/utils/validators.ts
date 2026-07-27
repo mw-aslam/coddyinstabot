@@ -15,3 +15,10 @@ export function extractInstagramUrl(text: string): string | null {
 export function looksLikeUnsupportedInstagramLink(text: string): boolean {
   return INSTAGRAM_HOST_REGEX.test(text) && !extractInstagramUrl(text);
 }
+
+const GENERIC_URL_REGEX = /https?:\/\/\S+|(?:^|\s)www\.\S+/i;
+
+/** True if the text looks like some kind of URL (any host), not just Instagram. */
+export function looksLikeUrl(text: string): boolean {
+  return GENERIC_URL_REGEX.test(text);
+}
