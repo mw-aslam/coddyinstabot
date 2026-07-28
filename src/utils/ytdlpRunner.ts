@@ -35,17 +35,19 @@ const BASE_ARGS = [
   '8',
   '--user-agent',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-  ...(cookiesFile
-    ? // With real account cookies, let yt-dlp use its own (default) client selection — it
-      // authenticates properly with a full browser session, and forcing mweb alongside
-      // cookies can fight the login rather than help it.
-      ['--cookies', cookiesFile]
-    : // No cookies: works around YouTube's "Sign in to confirm you're not a bot" block on the
-      // default web/android clients. mweb alone is the combo that reliably avoids both that
-      // block AND a separate 403 that hits DASH (split video+audio) formats when tv's format
-      // list is mixed in — at the cost of capping video quality to whatever progressive format
-      // mweb exposes (usually 360p). Audio-only extraction is unaffected.
-      ['--extractor-args', 'youtube:player_client=mweb']),
+  // Works around YouTube's "Sign in to confirm you're not a bot" block on the default web/
+  // android clients. mweb alone is the combo that reliably avoids both that block AND a
+  // separate 403 that hits DASH (split video+audio) formats when tv's format list is mixed
+  // in — at the cost of capping video quality to whatever progressive format mweb exposes
+  // (usually 360p). Audio-only extraction is unaffected. Re-check if YouTube changes this.
+  //
+  // Keep this even when cookies are configured: switching to yt-dlp's default client
+  // selection when cookies are present was tried and made things worse, not better —
+  // reverted. mweb + cookies together is the combination that's actually been observed
+  // working, not an assumption.
+  '--extractor-args',
+  'youtube:player_client=mweb',
+  ...(cookiesFile ? ['--cookies', cookiesFile] : []),
 ];
 
 /** Runs yt-dlp with the given args, enforcing a timeout and translating known failures. */
