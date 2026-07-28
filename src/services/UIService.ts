@@ -186,8 +186,9 @@ const GENERIC_TITLE_PATTERN = /^(video|photo|reel)\s+by\s+(.+)$/i;
 
 /**
  * Instagram posts with no caption get a generic yt-dlp title like "Video by masterkind0" —
- * shown as-is that reads as broken/ugly. Swap it for the bot's own name and keep the creator
- * as a separate, clearly-labelled author line instead.
+ * shown as-is that reads as broken/ugly. Swap it for the creator's name instead, which (unlike
+ * the bot's own static name) still tells entries apart in the Favorites list, which reuses this
+ * same title. Falls back to the bot's name only if even the creator is unknown.
  */
 export function prettifyInstagramTitle(
   rawTitle: string,
@@ -196,7 +197,8 @@ export function prettifyInstagramTitle(
 ): { title: string; author?: string } {
   const match = rawTitle.match(GENERIC_TITLE_PATTERN);
   if (match) {
-    return { title: botName, author: uploader ?? match[2].trim() };
+    const author = uploader ?? match[2].trim();
+    return { title: author || botName, author };
   }
   return { title: rawTitle, author: uploader };
 }
@@ -214,7 +216,7 @@ interface ResultCaptionInput {
 export function buildResultCaption(result: ResultCaptionInput): string {
   return [
     `✅ *${escapeMarkdown(result.title)}*`,
-    result.author ? `👤 Автор: ${escapeMarkdown(result.author)}` : undefined,
+    result.author && result.author !== result.title ? `👤 Автор: ${escapeMarkdown(result.author)}` : undefined,
     `📏 Размер: ${formatFileSize(result.fileSize)}`,
     result.height ? `🎬 Разрешение: ${result.width ?? '?'}x${result.height}` : undefined,
     `⏱ Длительность: ${formatDuration(result.duration)}`,
