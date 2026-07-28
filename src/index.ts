@@ -67,11 +67,30 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => shutdown(bot, 'SIGINT'));
   process.once('SIGTERM', () => shutdown(bot, 'SIGTERM'));
 
-  // bot.launch() only resolves once the bot is stopped (it awaits the polling
-  // loop internally), so we don't await it here — just react if it fails to start.
+  await launchWithRetry(bot);
+}
+
+/**
+ * During a deploy, the outgoing instance can still hold Telegram's polling slot for a few
+ * seconds after the incoming one starts, so the first launch attempt gets a 409 Conflict.
+ * Retrying a few times beats it registering as a crashed deploy over something that
+ * self-resolves in well under a minute.
+ */
+async function launchWithRetry(bot: ReturnType<typeof createBot>, attempt = 1): Promise<void> {
+  const maxAttempts = 5;
+  const retryDelayMs = 5_000;
+
+  // bot.launch() only resolves once the bot is stopped (it awaits the polling loop
+  // internally), so we don't await it here — just react if it fails to start.
   bot.launch({ dropPendingUpdates: true }, () => {
     logger.info('Bot started and polling for updates');
   }).catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('409') && attempt < maxAttempts) {
+      logger.warn(`Polling conflict (likely the old instance still shutting down), retrying ${attempt}/${maxAttempts}`);
+      setTimeout(() => launchWithRetry(bot, attempt + 1), retryDelayMs);
+      return;
+    }
     logger.error('Bot crashed while running', { err: err instanceof Error ? err.stack : String(err) });
     process.exit(1);
   });
