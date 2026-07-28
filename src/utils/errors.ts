@@ -65,6 +65,15 @@ export class DownloadError extends AppError {
   }
 }
 
+export class BotCheckError extends AppError {
+  constructor(message = 'YouTube bot check') {
+    super(
+      message,
+      '🤖 YouTube временно просит подтвердить, что вы не бот. Попробуйте ещё раз через пару минут или другую ссылку.',
+    );
+  }
+}
+
 export class QueueBusyError extends AppError {
   constructor(message = 'Queue busy') {
     super(message, '⏳ Слишком много активных загрузок. Пожалуйста, подождите.');

@@ -68,6 +68,14 @@ export const config = {
   // Base URL of a self-hosted Telegram Bot API server (see docker-compose's bot-api service).
   // Unset means Telegraf talks to Telegram's cloud API, which caps uploads at 50MB.
   telegramApiRoot: process.env.TELEGRAM_API_ROOT,
+
+  // Netscape-format cookies.txt content (not a file path) for a logged-in YouTube account.
+  // YouTube increasingly blocks datacenter IPs (like Render's) with "Sign in to confirm
+  // you're not a bot"; passing cookies from a real account works around it. Optional —
+  // YouTube downloads just get less reliable without it. Export via a browser extension
+  // like "Get cookies.txt LOCALLY". Literal "\n" sequences are unescaped to real newlines,
+  // so it can be pasted as a single-line env var.
+  youtubeCookies: process.env.YOUTUBE_COOKIES,
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;

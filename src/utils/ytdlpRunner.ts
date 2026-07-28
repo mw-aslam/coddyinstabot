@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from '../config/config';
 import {
   AgeRestrictedError,
+  BotCheckError,
   DownloadError,
   InvalidLinkError,
   MediaNotFoundError,
@@ -9,6 +12,17 @@ import {
   PrivateAccountError,
   TimeoutError,
 } from './errors';
+
+/** Materializes YOUTUBE_COOKIES (raw Netscape cookies.txt text) to a file yt-dlp can read. */
+function resolveCookiesFile(): string | undefined {
+  if (!config.youtubeCookies) return undefined;
+  fs.mkdirSync(config.downloads.tmpDir, { recursive: true });
+  const cookiesPath = path.join(config.downloads.tmpDir, 'youtube-cookies.txt');
+  fs.writeFileSync(cookiesPath, config.youtubeCookies.replace(/\\n/g, '\n'));
+  return cookiesPath;
+}
+
+const cookiesFile = resolveCookiesFile();
 
 const BASE_ARGS = [
   '--no-warnings',
@@ -28,6 +42,7 @@ const BASE_ARGS = [
   // (usually 360p). Audio-only extraction is unaffected. Re-check if YouTube changes this.
   '--extractor-args',
   'youtube:player_client=mweb',
+  ...(cookiesFile ? ['--cookies', cookiesFile] : []),
 ];
 
 /** Runs yt-dlp with the given args, enforcing a timeout and translating known failures. */
@@ -77,6 +92,9 @@ export function mapYtDlpError(stderr: string): Error {
   }
   if (text.includes('confirm your age') || text.includes('age-restricted') || text.includes('inappropriate for some users')) {
     return new AgeRestrictedError(stderr.slice(-500));
+  }
+  if (text.includes('sign in to confirm') || text.includes('not a bot')) {
+    return new BotCheckError(stderr.slice(-500));
   }
   if (
     text.includes('404') ||
