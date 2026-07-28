@@ -144,10 +144,13 @@ export class InstagramDownloader {
     logger.info('Downloading video', { url, quality, type });
     const heightCap = quality === 'best' ? undefined : QUALITY_HEIGHTS[quality];
     const capExpr = heightCap ? `[height<=${heightCap}]` : '';
-    // Prefer H.264 first: it's universally playable, whereas VP9/AV1-in-MP4 isn't
-    // decoded by many players (e.g. Telegram). Falls back to any codec if no H.264
-    // stream exists (common on Instagram) — the post-download probe catches that case.
-    const selector = `bv*[vcodec^=avc1]${capExpr}+ba/b[vcodec^=avc1]${capExpr}/bv*${capExpr}+ba/b${capExpr}/best`;
+    // Prefer Instagram's pre-merged progressive format first: it's typically already
+    // H.264+AAC in one file, needs no ffmpeg merge and no transcode (transcoding on
+    // Render's free-tier CPU is too slow — measured >4 minutes for a 1080p VP9 reel).
+    // Instagram doesn't expose vcodec for these, so a codec filter would wrongly skip
+    // them; fall back to DASH avc1 streams, then any DASH streams, only if no usable
+    // combined format exists. The post-download probe/transcode remains a safety net.
+    const selector = `b${capExpr}/bv*[vcodec^=avc1]${capExpr}+ba/bv*${capExpr}+ba/best`;
     const outputTemplate = path.join(outDir, 'video.%(ext)s');
 
     await runYtDlp([
