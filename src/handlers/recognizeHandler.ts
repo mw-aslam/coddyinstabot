@@ -1,4 +1,5 @@
 import type { Context } from 'telegraf';
+import { Telegram } from 'telegraf';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { config } from '../config/config';
@@ -16,6 +17,14 @@ import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
 import { upsertUser } from '../database/userRepository';
 import type { DownloadResult } from '../types';
+
+/**
+ * A local Bot API server (TELEGRAM_API_ROOT) reports incoming files by absolute local path
+ * instead of a downloadable URL — telegraf turns that into a file:// link, which the global
+ * fetch() can't read (and which points inside the bot-api container's filesystem anyway, not
+ * ours). Downloading the small voice clip via the plain cloud API sidesteps both problems.
+ */
+const cloudTelegram = new Telegram(config.botToken);
 
 /** Handles a voice message / audio clip / video note: recognizes the song and delivers it as MP3. */
 export async function recognizeHandler(ctx: Context): Promise<void> {
@@ -48,7 +57,7 @@ export async function recognizeHandler(ctx: Context): Promise<void> {
     const tmpDir = await createTmpDir(`recognize_${statusMessage.message_id}`);
 
     try {
-      const fileLink = await ctx.telegram.getFileLink(media.file_id);
+      const fileLink = await cloudTelegram.getFileLink(media.file_id);
       const rawPath = path.join(tmpDir, 'input');
       const res = await fetch(fileLink.toString());
       if (!res.ok) throw new MediaNotFoundError(`Failed to download voice file: HTTP ${res.status}`);
@@ -85,7 +94,12 @@ export async function recognizeHandler(ctx: Context): Promise<void> {
         `⏱ Длительность: ${formatDuration(result.duration)}`,
       ].join('\n');
 
-      const delivery = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: track.url, type: 'mp3' });
+      const delivery = await buildDeliveryActions(ctx, {
+        title: result.title,
+        sourceUrl: track.url,
+        type: 'mp3',
+        author: match.artist,
+      });
       const sent = await ctx.telegram.sendAudio(
         chatId,
         { source: result.filePath, filename: result.fileName },

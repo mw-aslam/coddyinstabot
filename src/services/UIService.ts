@@ -1,6 +1,6 @@
 import { Markup } from 'telegraf';
-import type { MusicTrack, QualityOption } from '../types';
-import { formatDuration, formatFileSize } from '../utils/formatters';
+import type { DownloadType, MusicTrack, QualityOption } from '../types';
+import { formatDuration, formatFileSize, MAX_TRIM_DURATION_SECONDS } from '../utils/formatters';
 import type { OverviewStats, TopQueryRow } from '../database/statsRepository';
 import type { FavoriteRow } from '../database/favoriteRepository';
 
@@ -58,6 +58,9 @@ export const helpText = [
   '*Полезное*',
   '❤️ Кнопка «Сохранить» под файлом добавляет его в Избранное (кнопка снизу).',
   '↪️ Чтобы поделиться файлом с другом — просто перешли сообщение (кнопка Telegram).',
+  '🎞 Под видео есть кнопки GIF и «Обрезать», под MP3 — «Текст песни».',
+  '🔥 /top — самые популярные запросы за последние 7 дней.',
+  '📡 /watch <ссылка> — авто-репост новых постов аккаунта в этот чат. /watchlist, /unwatch <id>.',
   '',
   '⚙️ Одновременно можно запустить не более 2 загрузок — остальные встанут в очередь.',
 ].join('\n');
@@ -123,22 +126,39 @@ export function trackPickerKeyboard(sessionId: string, tracks: MusicTrack[]) {
 
 interface ResultActionsOptions {
   deliveredId: string;
+  type: DownloadType;
   /** Present only for Instagram video/videoaudio results — offers a one-tap "just the song" button. */
   extractSessionId?: string;
 }
 
 /**
- * Action row(s) attached under every delivered file: extract audio, save.
- * Sharing itself is left to Telegram's native "forward" — it already sends the real file,
- * no custom deep link needed.
+ * Action row(s) attached under every delivered file: extract audio, GIF/trim (video), lyrics
+ * (mp3), save. Sharing itself is left to Telegram's native "forward" — it already sends the
+ * real file, no custom deep link needed.
  */
 export function resultActionsKeyboard(opts: ResultActionsOptions) {
   const rows: ReturnType<typeof Markup.button.callback>[][] = [];
   if (opts.extractSessionId) {
     rows.push([Markup.button.callback('🎵 Скачать только песню', `extractaudio:${opts.extractSessionId}`)]);
   }
+  if (opts.type !== 'mp3') {
+    rows.push([
+      Markup.button.callback('🎞 GIF', `gif:${opts.deliveredId}`),
+      Markup.button.callback('✂️ Обрезать', `trim:${opts.deliveredId}`),
+    ]);
+  } else {
+    rows.push([Markup.button.callback('📝 Текст песни', `lyrics:${opts.deliveredId}`)]);
+  }
   rows.push([Markup.button.callback('❤️ Сохранить', `save:${opts.deliveredId}`)]);
   return Markup.inlineKeyboard(rows);
+}
+
+/** Prompt shown after "✂️ Обрезать" is tapped — asks for the time range as plain text. */
+export function trimPromptText(): string {
+  return [
+    '✂️ Укажи начало и конец, например `0:10-0:40` (можно и просто `10-40`, через пробел или "до").',
+    `Максимум ${MAX_TRIM_DURATION_SECONDS} секунд за раз.`,
+  ].join('\n');
 }
 
 export function statsText(stats: OverviewStats): string {
@@ -164,16 +184,31 @@ export function topText(rows: TopQueryRow[]): string {
   return ['🔥 *Топ за 7 дней*', '', ...lines].join('\n');
 }
 
-export function favoritesText(rows: FavoriteRow[]): string {
-  if (rows.length === 0) return '❤️ У тебя пока нет сохранённых треков/видео. Сохраняй их кнопкой «❤️ Сохранить» под результатом.';
-  return ['❤️ *Твоё избранное*', '', 'Нажми на название, чтобы скачать заново, или 🗑 чтобы удалить:'].join('\n');
+/** Favorites are paginated so long lists don't blow past Telegram's keyboard size limits. */
+export const FAVORITES_PAGE_SIZE = 5;
+
+export function favoritesText(rows: FavoriteRow[], page: number, totalPages: number): string {
+  if (rows.length === 0 && page <= 1) {
+    return '❤️ У тебя пока нет сохранённых треков/видео. Сохраняй их кнопкой «❤️ Сохранить» под результатом.';
+  }
+  const lines = ['❤️ *Твоё избранное*', '', 'Нажми на название, чтобы скачать заново, или 🗑 чтобы удалить:'];
+  if (totalPages > 1) lines.push('', `Страница ${page} из ${totalPages}`);
+  return lines.join('\n');
 }
 
-export function favoritesKeyboard(rows: FavoriteRow[]) {
+export function favoritesKeyboard(rows: FavoriteRow[], page: number, totalPages: number) {
+  // Telegram caps inline button text at 64 chars; 58 leaves room for the "🎬 "/"🎵 " prefix.
   const buttons = rows.map((row) => [
-    Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 40)}`, `fav:${row.id}`),
-    Markup.button.callback('🗑', `favdel:${row.id}`),
+    Markup.button.callback(`${row.type === 'mp3' ? '🎵' : '🎬'} ${truncate(row.title, 58)}`, `fav:${row.id}`),
+    Markup.button.callback('🗑', `favdel:${row.id}:${page}`),
   ]);
+  if (totalPages > 1) {
+    const navRow = [];
+    if (page > 1) navRow.push(Markup.button.callback('◀️', `favpage:${page - 1}`));
+    navRow.push(Markup.button.callback(`${page}/${totalPages}`, 'fav:noop'));
+    if (page < totalPages) navRow.push(Markup.button.callback('▶️', `favpage:${page + 1}`));
+    buttons.push(navRow);
+  }
   buttons.push([Markup.button.callback('❌ Закрыть', 'fav:cancel')]);
   return Markup.inlineKeyboard(buttons);
 }
@@ -219,6 +254,7 @@ export function buildResultCaption(result: ResultCaptionInput): string {
     result.author && result.author !== result.title ? `👤 Автор: ${escapeMarkdown(result.author)}` : undefined,
     `📏 Размер: ${formatFileSize(result.fileSize)}`,
     result.height ? `🎬 Разрешение: ${result.width ?? '?'}x${result.height}` : undefined,
+    result.height ? `📊 Качество: ${result.height}p` : undefined,
     `⏱ Длительность: ${formatDuration(result.duration)}`,
   ]
     .filter(Boolean)

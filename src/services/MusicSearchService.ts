@@ -5,7 +5,7 @@ import { sanitizeFileName } from '../utils/formatters';
 import { findFirstFile } from '../utils/fileUtils';
 import { prepareThumbnail } from '../utils/thumbnail';
 import { runYtDlp } from '../utils/ytdlpRunner';
-import { DownloadError, MediaNotFoundError } from '../utils/errors';
+import { DownloadError, MediaNotFoundError, NetworkError, TimeoutError } from '../utils/errors';
 import { ffmpegService } from './FfmpegService';
 import type { DownloadResult, MusicTrack } from '../types';
 
@@ -23,10 +23,23 @@ const DEFAULT_RESULT_LIMIT = 5;
 
 /** Resolves a free-text query (song/artist name) to one or more candidate tracks. */
 export class MusicSearchService {
-  /** Returns up to `limit` YouTube matches for the query — lets the user pick the right version. */
+  /**
+   * Returns up to `limit` YouTube matches for the query — lets the user pick the right version.
+   * Retries once on transient timeout/network failures, same as InstagramDownloader.analyze().
+   */
   async search(query: string, limit = DEFAULT_RESULT_LIMIT): Promise<MusicTrack[]> {
     logger.info('Searching for tracks', { query, limit });
-    const { stdout } = await runYtDlp(['-j', `ytsearch${limit}:${query}`]);
+    let stdout: string;
+    try {
+      ({ stdout } = await runYtDlp(['-j', `ytsearch${limit}:${query}`]));
+    } catch (err) {
+      if (err instanceof TimeoutError || err instanceof NetworkError) {
+        logger.warn('Search failed with a transient error, retrying once', { query, err: err.message });
+        ({ stdout } = await runYtDlp(['-j', `ytsearch${limit}:${query}`]));
+      } else {
+        throw err;
+      }
+    }
 
     const lines = stdout.trim().split('\n').filter(Boolean);
     if (lines.length === 0) throw new MediaNotFoundError(`No results for "${query}"`);

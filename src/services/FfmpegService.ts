@@ -204,6 +204,50 @@ export class FfmpegService {
     ]);
   }
 
+  /**
+   * Cuts [startSeconds, startSeconds+durationSeconds) out of a video. Re-encodes rather than
+   * stream-copying: an arbitrary -ss cut point usually isn't on a keyframe, and copy-mode would
+   * either snap to the nearest keyframe (wrong start time) or produce a broken first frame.
+   */
+  async trimVideo(inputPath: string, outputPath: string, startSeconds: number, durationSeconds: number): Promise<void> {
+    logger.debug('Trimming video', { inputPath, outputPath, startSeconds, durationSeconds });
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-ss',
+      String(startSeconds),
+      '-i',
+      inputPath,
+      '-t',
+      String(durationSeconds),
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-c:a',
+      'aac',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+  }
+
+  /** Renders [startSeconds, startSeconds+durationSeconds) of a video as an animated GIF. */
+  async makeGif(inputPath: string, outputPath: string, startSeconds: number, durationSeconds: number): Promise<void> {
+    logger.debug('Making GIF', { inputPath, outputPath, startSeconds, durationSeconds });
+    await runProcess(config.binaries.ffmpegPath, [
+      '-y',
+      '-ss',
+      String(startSeconds),
+      '-i',
+      inputPath,
+      '-t',
+      String(durationSeconds),
+      '-vf',
+      "fps=12,scale=480:-1:flags=lanczos",
+      outputPath,
+    ]);
+  }
+
   /** Verifies the configured ffmpeg/ffprobe binaries are runnable. */
   async checkAvailable(): Promise<boolean> {
     try {

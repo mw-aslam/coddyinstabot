@@ -7,6 +7,8 @@ import { startCommand } from './commands/start';
 import { helpCommand } from './commands/help';
 import { statsCommand } from './commands/stats';
 import { favoritesCommand } from './commands/favorites';
+import { topCommand } from './commands/top';
+import { unwatchCommand, watchCommand, watchListCommand } from './commands/watch';
 import { linkHandler } from './handlers/linkHandler';
 import { callbackHandler } from './handlers/callbackHandler';
 import { recognizeHandler } from './handlers/recognizeHandler';
@@ -40,6 +42,10 @@ export function createBot(): Telegraf {
   bot.help(helpCommand);
   bot.command('stats', statsCommand);
   bot.command('favorites', favoritesCommand);
+  bot.command('top', topCommand);
+  bot.command('watch', watchCommand);
+  bot.command('watchlist', watchListCommand);
+  bot.command('unwatch', unwatchCommand);
 
   bot.on('text', linkHandler);
   bot.on(['voice', 'audio', 'video_note'], recognizeHandler);

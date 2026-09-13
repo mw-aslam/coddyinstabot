@@ -56,6 +56,7 @@ const MIGRATIONS = `
   );
 
   ALTER TABLE delivered_items ADD COLUMN IF NOT EXISTS file_id TEXT;
+  ALTER TABLE delivered_items ADD COLUMN IF NOT EXISTS author TEXT;
 
   CREATE INDEX IF NOT EXISTS idx_delivered_items_title ON delivered_items (title text_pattern_ops);
 
@@ -69,7 +70,29 @@ const MIGRATIONS = `
     UNIQUE (user_id, source_url)
   );
 
+  ALTER TABLE favorites ADD COLUMN IF NOT EXISTS author TEXT;
+
   CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+
+  -- Instagram/YouTube accounts to auto-repost from when they publish something new. chat_id is
+  -- where the repost is sent (a group/channel if /watch was run there, otherwise the user's DM);
+  -- user_id is who set it up, for /unwatch and per-user listing.
+  CREATE TABLE IF NOT EXISTS watched_accounts (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_url TEXT NOT NULL,
+    label TEXT NOT NULL,
+    last_seen_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, profile_url)
+  );
+
+  ALTER TABLE watched_accounts ADD COLUMN IF NOT EXISTS chat_id BIGINT;
+  UPDATE watched_accounts SET chat_id = user_id WHERE chat_id IS NULL;
+  ALTER TABLE watched_accounts ALTER COLUMN chat_id SET NOT NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_watched_accounts_user_id ON watched_accounts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_watched_accounts_chat_id ON watched_accounts(chat_id);
 `;
 
 /** Creates the schema if it doesn't exist yet. Safe to run on every startup. */

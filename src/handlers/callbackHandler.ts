@@ -4,6 +4,7 @@ import { sessionService } from '../services/SessionService';
 import { queueService } from '../services/QueueService';
 import {
   buildResultCaption,
+  FAVORITES_PAGE_SIZE,
   favoritesKeyboard,
   favoritesText,
   mainMenuKeyboard,
@@ -20,9 +21,17 @@ import { prepareThumbnail } from '../utils/thumbnail';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
-import { listFavorites, removeFavorite } from '../database/favoriteRepository';
+import { countFavorites, listFavorites, removeFavorite } from '../database/favoriteRepository';
 import { downloadAndSendTrack } from './musicHandler';
-import { buildDeliveryActions, cacheAudioFileId, handleSaveFavorite, redeliverItem } from './deliveryHandler';
+import {
+  buildDeliveryActions,
+  cacheAudioFileId,
+  handleGifRequest,
+  handleLyricsRequest,
+  handleSaveFavorite,
+  handleTrimPromptRequest,
+  redeliverItem,
+} from './deliveryHandler';
 import type { DownloadResult, DownloadType, QualityOption, SessionData } from '../types';
 
 /** Routes every inline-button press to the right sub-handler based on its callback_data prefix. */
@@ -44,11 +53,32 @@ export async function callbackHandler(ctx: Context): Promise<void> {
         await ctx.deleteMessage().catch(() => undefined);
         return;
       }
+      if (param === 'noop') return;
       await handleFavoriteRedownload(ctx, Number.parseInt(param, 10));
       return;
     }
     if (action === 'favdel') {
-      await handleFavoriteDelete(ctx, Number.parseInt(param, 10));
+      await handleFavoriteDelete(ctx, Number.parseInt(param, 10), Number.parseInt(value, 10) || 1);
+      return;
+    }
+    if (action === 'favpage') {
+      await ctx.answerCbQuery();
+      await renderFavoritesPage(ctx, Number.parseInt(param, 10));
+      return;
+    }
+    if (action === 'gif') {
+      await ctx.answerCbQuery();
+      await handleGifRequest(ctx, param);
+      return;
+    }
+    if (action === 'trim') {
+      await ctx.answerCbQuery();
+      await handleTrimPromptRequest(ctx, param);
+      return;
+    }
+    if (action === 'lyrics') {
+      await ctx.answerCbQuery();
+      await handleLyricsRequest(ctx, param);
       return;
     }
 
@@ -162,7 +192,11 @@ async function runDownload(
     // Let the user grab just the audio from a delivered video without resending the link.
     const extractSessionId =
       type !== 'mp3' ? sessionService.create({ userId, chatId, url, info, type: 'mp3' }).id : undefined;
-    const delivery = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: url, type }, extractSessionId);
+    const delivery = await buildDeliveryActions(
+      ctx,
+      { title: result.title, sourceUrl: url, type, author: result.author },
+      extractSessionId,
+    );
 
     await sendResult(ctx, chatId, result, delivery);
     await editStatus(ctx, session, '✅ Готово!');
@@ -256,22 +290,42 @@ async function handleFavoriteRedownload(ctx: Context, favoriteId: number): Promi
     await ctx.reply('⚠️ Не удалось найти этот элемент в избранном — возможно, он был удалён.');
     return;
   }
-  await redeliverItem(ctx, { id: `fav-${favorite.id}`, title: favorite.title, sourceUrl: favorite.sourceUrl, type: favorite.type });
+  await redeliverItem(ctx, {
+    id: `fav-${favorite.id}`,
+    title: favorite.title,
+    sourceUrl: favorite.sourceUrl,
+    type: favorite.type,
+    author: favorite.author,
+  });
 }
 
 /** Handles a "🗑" tap: removes the item and refreshes the /favorites list in place. */
-async function handleFavoriteDelete(ctx: Context, favoriteId: number): Promise<void> {
+async function handleFavoriteDelete(ctx: Context, favoriteId: number, page: number): Promise<void> {
   if (!ctx.from) return;
   await removeFavorite(ctx.from.id, favoriteId);
   await ctx.answerCbQuery('🗑 Удалено');
+  await renderFavoritesPage(ctx, page);
+}
 
-  const rows = await listFavorites(ctx.from.id);
+/**
+ * Re-fetches one page of favorites and redraws the list in place — shared by pagination taps
+ * and post-delete refreshes. Always writes an explicit reply_markup (even an empty one when
+ * the page is now blank) so buttons for already-deleted items never linger on screen.
+ */
+async function renderFavoritesPage(ctx: Context, page: number): Promise<void> {
+  if (!ctx.from) return;
+  const total = await countFavorites(ctx.from.id);
+  const totalPages = Math.max(1, Math.ceil(total / FAVORITES_PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const rows = await listFavorites(ctx.from.id, FAVORITES_PAGE_SIZE, (safePage - 1) * FAVORITES_PAGE_SIZE);
+
   const query = ctx.callbackQuery;
   if (!query?.message) return;
   await ctx.telegram
-    .editMessageText(query.message.chat.id, query.message.message_id, undefined, favoritesText(rows), {
+    .editMessageText(query.message.chat.id, query.message.message_id, undefined, favoritesText(rows, safePage, totalPages), {
       parse_mode: 'Markdown',
-      ...(rows.length > 0 ? favoritesKeyboard(rows) : {}),
+      reply_markup:
+        rows.length > 0 ? favoritesKeyboard(rows, safePage, totalPages).reply_markup : { inline_keyboard: [] },
     })
     .catch(() => undefined);
 }

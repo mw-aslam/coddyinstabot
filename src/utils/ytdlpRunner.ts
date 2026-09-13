@@ -13,12 +13,19 @@ import {
   TimeoutError,
 } from './errors';
 
-/** Materializes YOUTUBE_COOKIES (raw Netscape cookies.txt text) to a file yt-dlp can read. */
+/**
+ * Materializes YOUTUBE_COOKIES/INSTAGRAM_COOKIES (raw Netscape cookies.txt text) into one
+ * combined file — yt-dlp only accepts a single --cookies path, but the Netscape format allows
+ * cookies for multiple domains in one file, so it only ever uses the ones matching the site
+ * it's actually talking to.
+ */
 function resolveCookiesFile(): string | undefined {
-  if (!config.youtubeCookies) return undefined;
+  const sources = [config.youtubeCookies, config.instagramCookies].filter((c): c is string => Boolean(c));
+  if (sources.length === 0) return undefined;
+
   fs.mkdirSync(config.downloads.tmpDir, { recursive: true });
-  const cookiesPath = path.join(config.downloads.tmpDir, 'youtube-cookies.txt');
-  fs.writeFileSync(cookiesPath, config.youtubeCookies.replace(/\\n/g, '\n'));
+  const cookiesPath = path.join(config.downloads.tmpDir, 'cookies.txt');
+  fs.writeFileSync(cookiesPath, sources.map((c) => c.replace(/\\n/g, '\n')).join('\n'));
   return cookiesPath;
 }
 

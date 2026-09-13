@@ -1,29 +1,10 @@
 import fs from 'node:fs/promises';
-import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { config } from './config/config';
 import { logger } from './utils/logger';
 import { runMigrations, closeDatabase } from './database/db';
 import { createBot } from './bot';
-
-/**
- * Render's free web-service tier needs an HTTP port bound and requires periodic requests
- * to avoid going to sleep — this just answers 200 OK so an external pinger (see
- * .github/workflows/keep-alive.yml) can keep the instance warm. No-op locally.
- */
-function startHealthCheckServer(): void {
-  const port = process.env.PORT;
-  if (!port) return;
-
-  http
-    .createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('ok');
-    })
-    .listen(Number.parseInt(port, 10), () => {
-      logger.info(`Health-check server listening on port ${port}`);
-    });
-}
+import { startWatchPoller } from './services/WatchService';
 
 /** Runs `binary <versionFlag>` and resolves to true only if it exits with code 0. */
 function checkBinary(binary: string, versionFlag: string): Promise<boolean> {
@@ -60,9 +41,9 @@ async function main(): Promise<void> {
   await fs.mkdir(config.downloads.tmpDir, { recursive: true });
   await checkDependencies();
   await runMigrations();
-  startHealthCheckServer();
 
   const bot = createBot();
+  startWatchPoller(bot.telegram);
 
   process.once('SIGINT', () => shutdown(bot, 'SIGINT'));
   process.once('SIGTERM', () => shutdown(bot, 'SIGTERM'));

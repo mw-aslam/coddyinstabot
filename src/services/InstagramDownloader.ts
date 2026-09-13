@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { sanitizeFileName } from '../utils/formatters';
 import { findFirstFile } from '../utils/fileUtils';
 import { runYtDlp } from '../utils/ytdlpRunner';
-import { DownloadError } from '../utils/errors';
+import { DownloadError, NetworkError, TimeoutError } from '../utils/errors';
 import { ffmpegService } from './FfmpegService';
 import type { DownloadResult, DownloadType, InstagramFormat, InstagramMediaInfo, QualityOption } from '../types';
 
@@ -59,10 +59,24 @@ const QUALITY_HEIGHTS: Record<Exclude<QualityOption, 'best'>, number> = {
 
 /** A thin yt-dlp wrapper — despite the name, it works identically for Instagram and YouTube URLs. */
 export class InstagramDownloader {
-  /** Fetches metadata + available formats for a link without downloading any media. */
+  /**
+   * Fetches metadata + available formats for a link without downloading any media.
+   * Retries once on transient timeout/network failures — YouTube/Instagram's info
+   * endpoints occasionally hang on the first request and succeed immediately on the next.
+   */
   async analyze(url: string): Promise<InstagramMediaInfo> {
     logger.info('Analyzing Instagram link', { url });
-    const { stdout } = await runYtDlp(['-j', url]);
+    let stdout: string;
+    try {
+      ({ stdout } = await runYtDlp(['-j', url]));
+    } catch (err) {
+      if (err instanceof TimeoutError || err instanceof NetworkError) {
+        logger.warn('Analyze failed with a transient error, retrying once', { url, err: err.message });
+        ({ stdout } = await runYtDlp(['-j', url]));
+      } else {
+        throw err;
+      }
+    }
 
     let raw: RawInfo;
     try {
@@ -84,11 +98,37 @@ export class InstagramDownloader {
     };
   }
 
-  /** Quality buttons to offer, based on what heights are actually available. */
+  /**
+   * Cheaply fetches just the most recent post/video from a profile/channel URL — used by
+   * /watch to detect new uploads without pulling full metadata for the whole page. Instagram
+   * profile listing needs INSTAGRAM_COOKIES (a logged-out request gets "Unable to extract
+   * data"); a plain post/reel link never needs this and is unaffected either way.
+   */
+  async getLatestPost(profileUrl: string): Promise<{ id: string; url: string } | null> {
+    const { stdout } = await runYtDlp(['--flat-playlist', '--playlist-items', '1', '-J', profileUrl]);
+    const data = JSON.parse(stdout) as { entries?: Array<{ id?: string; url?: string }> };
+    const entry = data.entries?.[0];
+    if (!entry?.id || !entry.url) return null;
+    return { id: entry.id, url: entry.url };
+  }
+
+  /**
+   * Quality buttons to offer, based on what heights are actually available. Only offering
+   * reachable heights matters most for YouTube: the mweb client this bot uses to dodge
+   * YouTube's bot-check only exposes a 360p progressive stream, so without this filter the
+   * menu would show 480p/720p/1080p buttons that silently downgrade to 360p on download.
+   */
   getAvailableQualities(info: InstagramMediaInfo): QualityOption[] {
     const maxHeight = info.formats.reduce((max, f) => Math.max(max, f.height ?? 0), 0);
-    const qualities: QualityOption[] = ['360', '480', '720'];
-    if (maxHeight >= 1080) qualities.push('1080');
+    if (maxHeight === 0) {
+      // No format exposes height metadata — can't know the real ceiling, so offer the
+      // full default range rather than hiding everything.
+      return ['360', '480', '720', 'best'];
+    }
+    const qualities: QualityOption[] = (Object.keys(QUALITY_HEIGHTS) as Exclude<QualityOption, 'best'>[]).filter(
+      (q) => maxHeight >= QUALITY_HEIGHTS[q],
+    );
+    if (qualities.length === 0) qualities.push('360');
     qualities.push('best');
     return qualities;
   }

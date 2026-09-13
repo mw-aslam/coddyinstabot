@@ -94,7 +94,12 @@ export async function downloadAndSendTrack(ctx: Context, session: SessionData, t
         `⏱ Длительность: ${formatDuration(result.duration)}`,
       ].join('\n');
 
-      const delivery = await buildDeliveryActions(ctx, { title: result.title, sourceUrl: track.url, type: 'mp3' });
+      const delivery = await buildDeliveryActions(ctx, {
+        title: result.title,
+        sourceUrl: track.url,
+        type: 'mp3',
+        author: track.uploader,
+      });
 
       const sent = await ctx.telegram.sendAudio(
         chatId,

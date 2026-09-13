@@ -1,4 +1,5 @@
 import type { Context } from 'telegraf';
+import path from 'node:path';
 import { nanoid } from 'nanoid';
 import {
   createDeliveredItem,
@@ -7,17 +8,22 @@ import {
   type DeliveredItem,
 } from '../database/deliveredItemRepository';
 import { addFavorite } from '../database/favoriteRepository';
-import { buildResultCaption, resultActionsKeyboard, stageText } from '../services/UIService';
+import { buildResultCaption, escapeMarkdown, resultActionsKeyboard, stageText, trimPromptText } from '../services/UIService';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { musicSearchService } from '../services/MusicSearchService';
+import { ffmpegService } from '../services/FfmpegService';
+import { fetchLyrics } from '../services/LyricsService';
 import { queueService } from '../services/QueueService';
 import { sessionService } from '../services/SessionService';
+import { pendingTrimService, type PendingTrim } from '../services/PendingTrimService';
 import { toUserMessage, FileTooLargeError } from '../utils/errors';
 import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
 import { config, MAX_FILE_SIZE_BYTES } from '../config/config';
 import { logger } from '../utils/logger';
 import { logDownload } from '../database/downloadRepository';
 import type { DownloadResult, DownloadType } from '../types';
+
+const GIF_DURATION_SECONDS = 6;
 
 /**
  * Records a successfully delivered file and builds the action-row keyboard (extract/save) that
@@ -27,13 +33,19 @@ import type { DownloadResult, DownloadType } from '../types';
  */
 export async function buildDeliveryActions(
   _ctx: Context,
-  item: { title: string; sourceUrl: string; type: DownloadType },
+  item: { title: string; sourceUrl: string; type: DownloadType; author?: string },
   extractSessionId?: string,
 ) {
   const deliveredId = nanoid(10);
-  await createDeliveredItem({ id: deliveredId, title: item.title, sourceUrl: item.sourceUrl, type: item.type });
+  await createDeliveredItem({
+    id: deliveredId,
+    title: item.title,
+    sourceUrl: item.sourceUrl,
+    type: item.type,
+    author: item.author,
+  });
 
-  return { deliveredId, keyboard: resultActionsKeyboard({ deliveredId, extractSessionId }) };
+  return { deliveredId, keyboard: resultActionsKeyboard({ deliveredId, type: item.type, extractSessionId }) };
 }
 
 /** Caches the file_id Telegram just assigned to a sent audio, so inline mode can reuse it instantly. */
@@ -53,7 +65,13 @@ export async function handleSaveFavorite(ctx: Context, deliveredId: string): Pro
     await ctx.answerCbQuery('⌛ Не удалось найти этот файл, он мог устареть.', { show_alert: true });
     return;
   }
-  await addFavorite({ userId: ctx.from.id, title: item.title, sourceUrl: item.sourceUrl, type: item.type });
+  await addFavorite({
+    userId: ctx.from.id,
+    title: item.title,
+    sourceUrl: item.sourceUrl,
+    type: item.type,
+    author: item.author,
+  });
   await ctx.answerCbQuery('❤️ Сохранено в избранное!');
 }
 
@@ -78,6 +96,7 @@ export async function redeliverItem(ctx: Context, item: DeliveredItem): Promise<
       } else {
         result = await instagramDownloader.downloadVideoWithAudio(item.sourceUrl, 'best', tmpDir, item.title);
       }
+      result.author = item.author;
 
       const fileSize = await getFileSize(result.filePath);
       if (fileSize > MAX_FILE_SIZE_BYTES) {
@@ -91,6 +110,7 @@ export async function redeliverItem(ctx: Context, item: DeliveredItem): Promise<
         title: result.title,
         sourceUrl: item.sourceUrl,
         type: item.type,
+        author: item.author,
       });
 
       if (result.type === 'mp3') {
@@ -136,4 +156,139 @@ export async function redeliverItem(ctx: Context, item: DeliveredItem): Promise<
 export function createExtractAudioSession(userId: number, chatId: number, url: string): string {
   const session = sessionService.create({ userId, chatId, url, type: 'mp3' });
   return session.id;
+}
+
+/** Handles "🎞 GIF": re-downloads the source and renders its first few seconds as an animated GIF. */
+export async function handleGifRequest(ctx: Context, deliveredId: string): Promise<void> {
+  if (!ctx.from || !ctx.chat) return;
+  const item = await getDeliveredItem(deliveredId);
+  if (!item) {
+    await ctx.reply('⌛ Не удалось найти этот файл, он мог устареть.');
+    return;
+  }
+
+  const userId = ctx.from.id;
+  const chatId = ctx.chat.id;
+  const statusMessage = await ctx.reply('🎞 Готовлю GIF...');
+  const edit = async (text: string): Promise<void> => {
+    await ctx.telegram.editMessageText(chatId, statusMessage.message_id, undefined, text).catch(() => undefined);
+  };
+
+  await queueService.run(userId, async () => {
+    const tmpDir = await createTmpDir(nanoid(10));
+    try {
+      const source = await instagramDownloader.downloadVideoWithAudio(item.sourceUrl, 'best', tmpDir, item.title);
+      const gifPath = path.join(tmpDir, 'clip.gif');
+      await ffmpegService.makeGif(source.filePath, gifPath, 0, GIF_DURATION_SECONDS);
+      await ctx.telegram.sendAnimation(chatId, { source: gifPath, filename: 'clip.gif' });
+      await edit('✅ Готово!');
+    } catch (err) {
+      logger.error('GIF creation failed', { url: item.sourceUrl, err: (err as Error).message });
+      await edit(toUserMessage(err));
+    } finally {
+      await removeDir(tmpDir);
+    }
+  });
+}
+
+/** Handles "✂️ Обрезать": remembers the source and asks the user for a time range as plain text. */
+export async function handleTrimPromptRequest(ctx: Context, deliveredId: string): Promise<void> {
+  if (!ctx.from || !ctx.chat) return;
+  const item = await getDeliveredItem(deliveredId);
+  if (!item) {
+    await ctx.reply('⌛ Не удалось найти этот файл, он мог устареть.');
+    return;
+  }
+  pendingTrimService.set(ctx.from.id, {
+    chatId: ctx.chat.id,
+    sourceUrl: item.sourceUrl,
+    title: item.title,
+    type: item.type,
+  });
+  await ctx.replyWithMarkdown(trimPromptText());
+}
+
+/** Re-downloads the source and cuts out the requested range, once the user replies with a time range. */
+export async function executeTrim(
+  ctx: Context,
+  userId: number,
+  pending: PendingTrim,
+  range: { startSeconds: number; durationSeconds: number },
+): Promise<void> {
+  const chatId = pending.chatId;
+  const statusMessage = await ctx.reply(stageText('download'));
+  const edit = async (text: string): Promise<void> => {
+    await ctx.telegram.editMessageText(chatId, statusMessage.message_id, undefined, text).catch(() => undefined);
+  };
+
+  await queueService.run(userId, async () => {
+    const tmpDir = await createTmpDir(nanoid(10));
+    try {
+      const source = await instagramDownloader.downloadVideoWithAudio(pending.sourceUrl, 'best', tmpDir, pending.title);
+      const trimmedPath = path.join(tmpDir, 'trimmed.mp4');
+      await ffmpegService.trimVideo(source.filePath, trimmedPath, range.startSeconds, range.durationSeconds);
+
+      const fileSize = await getFileSize(trimmedPath);
+      if (fileSize > MAX_FILE_SIZE_BYTES) {
+        throw new FileTooLargeError(fileSize / (1024 * 1024), config.downloads.maxFileSizeMb);
+      }
+
+      await edit(stageText('upload'));
+
+      const { keyboard } = await buildDeliveryActions(ctx, {
+        title: pending.title,
+        sourceUrl: pending.sourceUrl,
+        type: pending.type,
+      });
+      await ctx.telegram.sendVideo(
+        chatId,
+        { source: trimmedPath, filename: 'clip.mp4' },
+        { caption: `✂️ *${escapeMarkdown(pending.title)}*`, parse_mode: 'Markdown', ...keyboard },
+      );
+      await edit('✅ Готово!');
+      await logDownload({ userId, url: pending.sourceUrl, type: pending.type, status: 'success' });
+    } catch (err) {
+      logger.error('Trim failed', { url: pending.sourceUrl, err: (err as Error).message });
+      await edit(toUserMessage(err));
+      await logDownload({
+        userId,
+        url: pending.sourceUrl,
+        type: pending.type,
+        status: 'error',
+        errorMessage: (err as Error).message.slice(0, 500),
+      }).catch(() => undefined);
+    } finally {
+      await removeDir(tmpDir);
+    }
+  });
+}
+
+/** Handles "📝 Текст песни": looks up the delivered item and fetches lyrics for it. */
+export async function handleLyricsRequest(ctx: Context, deliveredId: string): Promise<void> {
+  if (!ctx.chat) return;
+  const item = await getDeliveredItem(deliveredId);
+  if (!item) {
+    await ctx.reply('⌛ Не удалось найти этот файл, он мог устареть.');
+    return;
+  }
+
+  const statusMessage = await ctx.reply('📝 Ищу текст песни...');
+  try {
+    const lyrics = await fetchLyrics(item.author, item.title);
+    if (!lyrics) {
+      await ctx.telegram
+        .editMessageText(ctx.chat.id, statusMessage.message_id, undefined, '❌ Текст песни не найден.')
+        .catch(() => undefined);
+      return;
+    }
+    const truncated = lyrics.length > 3800 ? `${lyrics.slice(0, 3800)}\n…` : lyrics;
+    await ctx.telegram
+      .editMessageText(ctx.chat.id, statusMessage.message_id, undefined, `📝 ${item.title}\n\n${truncated}`)
+      .catch(() => undefined);
+  } catch (err) {
+    logger.error('Lyrics fetch failed', { title: item.title, err: (err as Error).message });
+    await ctx.telegram
+      .editMessageText(ctx.chat.id, statusMessage.message_id, undefined, '⚠️ Не удалось получить текст песни.')
+      .catch(() => undefined);
+  }
 }

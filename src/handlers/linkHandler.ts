@@ -1,6 +1,7 @@
 import type { Context } from 'telegraf';
 import { instagramDownloader } from '../services/InstagramDownloader';
 import { sessionService } from '../services/SessionService';
+import { pendingTrimService } from '../services/PendingTrimService';
 import { mainMenuKeyboard, menuText, stageText } from '../services/UIService';
 import {
   extractInstagramUrl,
@@ -8,10 +9,12 @@ import {
   looksLikeUnsupportedInstagramLink,
   looksLikeUrl,
 } from '../utils/validators';
+import { parseTimeRange } from '../utils/formatters';
 import { toUserMessage } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { upsertUser } from '../database/userRepository';
 import { musicSearchHandler } from './musicHandler';
+import { executeTrim } from './deliveryHandler';
 import { favoritesCommand } from '../commands/favorites';
 import { helpCommand } from '../commands/help';
 
@@ -41,6 +44,25 @@ export async function linkHandler(ctx: Context): Promise<void> {
   }
 
   const url = extractInstagramUrl(text) ?? extractYouTubeUrl(text);
+
+  const userId = ctx.from?.id;
+  const pendingTrim = userId !== undefined ? pendingTrimService.get(userId) : undefined;
+  if (pendingTrim && userId !== undefined) {
+    if (url) {
+      // A fresh link arrived instead of a time range — abandon the pending trim rather than
+      // misreading the link as one.
+      pendingTrimService.delete(userId);
+    } else {
+      const range = parseTimeRange(text);
+      if (!range) {
+        await ctx.reply('⚠️ Не понял диапазон. Например: `0:10-0:40` или просто `10-40`.', { parse_mode: 'Markdown' });
+        return;
+      }
+      pendingTrimService.delete(userId);
+      await executeTrim(ctx, userId, pendingTrim, range);
+      return;
+    }
+  }
 
   if (!url) {
     if (looksLikeUnsupportedInstagramLink(text)) {

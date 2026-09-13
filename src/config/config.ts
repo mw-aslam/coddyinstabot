@@ -76,6 +76,14 @@ export const config = {
   // like "Get cookies.txt LOCALLY". Literal "\n" sequences are unescaped to real newlines,
   // so it can be pasted as a single-line env var.
   youtubeCookies: process.env.YOUTUBE_COOKIES,
+
+  // Same idea as youtubeCookies, but for a logged-in Instagram account. Without it, Instagram
+  // rejects anonymous profile-page listing (used by /watch) with "Unable to extract data" —
+  // single-post links still work fine either way. Optional.
+  instagramCookies: process.env.INSTAGRAM_COOKIES,
+
+  // How often (minutes) watched Instagram/YouTube accounts are checked for new posts.
+  watchPollIntervalMinutes: int('WATCH_POLL_INTERVAL_MINUTES', 5),
 } as const;
 
 export const MAX_FILE_SIZE_BYTES = config.downloads.maxFileSizeMb * 1024 * 1024;
