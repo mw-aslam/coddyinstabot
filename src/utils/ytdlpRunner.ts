@@ -53,7 +53,7 @@ const BASE_ARGS = [
   // reverted. mweb + cookies together is the combination that's actually been observed
   // working, not an assumption.
   '--extractor-args',
-  'youtube:player_client=mweb',
+  'youtube:player_client=mweb,android,ios,web',
   ...(cookiesFile ? ['--cookies', cookiesFile] : []),
 ];
 
