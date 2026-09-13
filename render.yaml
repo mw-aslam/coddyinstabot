@@ -1,7 +1,5 @@
 databases:
   - name: instabot-db
-    databaseName: instabot
-    user: postgres
     plan: free
 
 services:

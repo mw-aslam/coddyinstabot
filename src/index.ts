@@ -63,7 +63,7 @@ async function launchWithRetry(bot: ReturnType<typeof createBot>, attempt = 1): 
 
   // bot.launch() only resolves once the bot is stopped (it awaits the polling loop
   // internally), so we don't await it here — just react if it fails to start.
-  bot.launch({ dropPendingUpdates: true }, () => {
+  bot.launch(() => {
     logger.info('Bot started and polling for updates');
   }).catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
