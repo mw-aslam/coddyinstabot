@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { config } from './config/config';
 import { logger } from './utils/logger';
 import { runMigrations, closeDatabase } from './database/db';
@@ -47,6 +48,15 @@ async function main(): Promise<void> {
 
   process.once('SIGINT', () => shutdown(bot, 'SIGINT'));
   process.once('SIGTERM', () => shutdown(bot, 'SIGTERM'));
+
+  // Start a dummy HTTP server for Render Web Service compatibility
+  const port = process.env.PORT || 3000;
+  http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Bot is running!');
+  }).listen(port, () => {
+    logger.info(`Dummy HTTP server listening on port ${port} for Render health checks`);
+  });
 
   await launchWithRetry(bot);
 }

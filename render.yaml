@@ -3,7 +3,7 @@ databases:
     plan: free
 
 services:
-  - type: worker
+  - type: web
     name: instabot-worker
     env: docker
     plan: free
