@@ -12,14 +12,13 @@ services:
         fromDatabase:
           name: instabot-db
           property: connectionString
-      # Quyidagi o'zgaruvchilarni Render panelida kiritishingiz kerak bo'ladi
       - key: BOT_TOKEN
-        sync: false
+        value: "8834427096:AAG7VYfV3D0lXqJonCvLmf8BpdebDzVZQLo"
       - key: TELEGRAM_API_ID
-        sync: false
+        value: "32863089"
       - key: TELEGRAM_API_HASH
-        sync: false
+        value: "6c26c9fb384378e4184fcef8e7f93f5a"
       - key: ADMIN_IDS
-        sync: false
+        value: "6736116111"
       - key: MAX_FILE_SIZE_MB
         value: "50"
