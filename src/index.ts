@@ -51,7 +51,7 @@ async function main(): Promise<void> {
 
   // Start a dummy HTTP server for Render Web Service compatibility
   const port = process.env.PORT || 3000;
-  http.createServer((req, res) => {
+  http.createServer((_req, res) => {
     res.writeHead(200);
     res.end('Bot is running!');
   }).listen(port, () => {
