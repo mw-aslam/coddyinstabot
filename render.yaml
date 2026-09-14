@@ -12,6 +12,8 @@ services:
         fromDatabase:
           name: instabot-db
           property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
       - key: BOT_TOKEN
         value: "8834427096:AAG7VYfV3D0lXqJonCvLmf8BpdebDzVZQLo"
       - key: TELEGRAM_API_ID

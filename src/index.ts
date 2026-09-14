@@ -4,7 +4,7 @@ import http from 'node:http';
 import { config } from './config/config';
 import { logger } from './utils/logger';
 import { runMigrations, closeDatabase } from './database/db';
-import { createBot } from './bot';
+import { createBot, setupBotCommands } from './bot';
 import { startWatchPoller } from './services/WatchService';
 
 /** Runs `binary <versionFlag>` and resolves to true only if it exits with code 0. */
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
   await runMigrations();
 
   const bot = createBot();
+  await setupBotCommands(bot);
   startWatchPoller(bot.telegram);
 
   process.once('SIGINT', () => shutdown(bot, 'SIGINT'));

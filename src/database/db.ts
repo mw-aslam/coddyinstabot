@@ -2,11 +2,30 @@ import { Pool } from 'pg';
 import { config } from '../config/config';
 import { logger } from '../utils/logger';
 
-// Managed Postgres (Render, Railway, etc.) requires SSL; local/self-hosted Postgres typically doesn't.
-const ssl = process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined;
+const connectionString = config.database.connectionString;
 
-export const pool = config.database.connectionString
-  ? new Pool({ connectionString: config.database.connectionString, ssl })
+const isRemoteDb = Boolean(
+  connectionString &&
+  !connectionString.includes('localhost') &&
+  !connectionString.includes('127.0.0.1')
+);
+
+// Managed Postgres (Render, Railway, Supabase, etc.) requires SSL. Enable SSL if DATABASE_SSL=true or for remote connectionStrings unless DATABASE_SSL=false.
+const useSsl = process.env.DATABASE_SSL === 'true' ||
+  (process.env.DATABASE_SSL !== 'false' && isRemoteDb);
+
+const ssl = useSsl ? { rejectUnauthorized: false } : undefined;
+
+if (!connectionString) {
+  logger.warn(
+    'DATABASE_URL environment variable is not set! Falling back to host "%s:%d". Ensure DATABASE_URL is set in your host/Render settings.',
+    config.database.host,
+    config.database.port
+  );
+}
+
+export const pool = connectionString
+  ? new Pool({ connectionString, ssl })
   : new Pool({
       host: config.database.host,
       port: config.database.port,

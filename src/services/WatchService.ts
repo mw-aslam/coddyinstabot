@@ -8,30 +8,43 @@ import { createTmpDir, getFileSize, removeDir } from '../utils/fileUtils';
 import { MAX_FILE_SIZE_BYTES } from '../config/config';
 import { nanoid } from 'nanoid';
 
-const STAGGER_DELAY_MS = 3_000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Starts the background poller that checks every watched account for a new post. */
+/** Starts the background poller aligned to exact top-of-minute (:00 seconds) without stagger delay. */
 export function startWatchPoller(telegram: Telegram): void {
   const intervalMs = config.watchPollIntervalMinutes * 60 * 1000;
-  setInterval(() => {
+
+  const runPollCycle = () => {
     pollAll(telegram).catch((err) => logger.error('Watch poll cycle failed', { err: (err as Error).message }));
-  }, intervalMs).unref();
-  logger.info('Watch poller started', { intervalMinutes: config.watchPollIntervalMinutes });
+  };
+
+  // Run initial poll cycle immediately on startup
+  runPollCycle();
+
+  // Align timer to trigger exactly at top of minute (:00 seconds)
+  const now = new Date();
+  const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+
+  setTimeout(() => {
+    runPollCycle();
+    setInterval(runPollCycle, intervalMs).unref();
+  }, msUntilNextMinute).unref();
+
+  logger.info('Watch poller started (aligned to :00 seconds, instant delivery)', {
+    intervalMinutes: config.watchPollIntervalMinutes,
+  });
 }
 
 async function pollAll(telegram: Telegram): Promise<void> {
   const watches = await listAllWatches();
-  for (const watch of watches) {
-    await checkOne(telegram, watch).catch((err) =>
-      logger.warn('Checking a watched account failed', { profileUrl: watch.profileUrl, err: (err as Error).message }),
-    );
-    // Stagger requests so a long watchlist doesn't hammer yt-dlp/the source site all at once.
-    await sleep(STAGGER_DELAY_MS);
-  }
+  if (watches.length === 0) return;
+
+  // Process all watch checks concurrently so notifications arrive immediately without stagger delay
+  await Promise.allSettled(
+    watches.map((watch) =>
+      checkOne(telegram, watch).catch((err) =>
+        logger.warn('Checking a watched account failed', { profileUrl: watch.profileUrl, err: (err as Error).message }),
+      ),
+    ),
+  );
 }
 
 async function checkOne(telegram: Telegram, watch: WatchedAccount): Promise<void> {

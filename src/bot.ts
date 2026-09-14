@@ -14,6 +14,27 @@ import { callbackHandler } from './handlers/callbackHandler';
 import { recognizeHandler } from './handlers/recognizeHandler';
 import { inlineHandler } from './handlers/inlineHandler';
 import { isSubscribedToAll } from './services/SubscriptionService';
+import { logger } from './utils/logger';
+
+export const BOT_COMMANDS = [
+  { command: 'start', description: 'Запустить бота и показать главное меню' },
+  { command: 'help', description: 'Инструкция и помощь по использованию бота' },
+  { command: 'favorites', description: 'Моё избранное (сохранённые медиа)' },
+  { command: 'top', description: 'Топ самых популярных скачиваний' },
+  { command: 'watch', description: 'Отслеживать новые посты аккаунта' },
+  { command: 'watchlist', description: 'Список отслеживаемых аккаунтов' },
+  { command: 'unwatch', description: 'Удалить аккаунт из отслеживания' },
+  { command: 'stats', description: 'Статистика бота (для админов)' },
+];
+
+export async function setupBotCommands(bot: Telegraf): Promise<void> {
+  try {
+    await bot.telegram.setMyCommands(BOT_COMMANDS);
+    logger.info('Bot commands registered successfully in Russian');
+  } catch (err) {
+    logger.error('Failed to set bot commands', { err: (err as Error).message });
+  }
+}
 
 export function createBot(): Telegraf {
   const bot = new Telegraf(

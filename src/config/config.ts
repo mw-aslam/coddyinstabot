@@ -16,6 +16,16 @@ function int(name: string, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function getBinaryPath(envVarName: string, fallback: string): string {
+  const value = process.env[envVarName];
+  if (!value) return fallback;
+  // If running on non-Windows (e.g. Linux container on Render) but the env var is a Windows path
+  if (process.platform !== 'win32' && (value.includes('\\') || /^[a-zA-Z]:/.test(value) || value.endsWith('.exe'))) {
+    return fallback;
+  }
+  return value;
+}
+
 export const config = {
   botToken: required('BOT_TOKEN'),
 
@@ -29,9 +39,9 @@ export const config = {
   },
 
   binaries: {
-    ytDlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
-    ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
-    ffprobePath: process.env.FFPROBE_PATH ?? 'ffprobe',
+    ytDlpPath: getBinaryPath('YTDLP_PATH', 'yt-dlp'),
+    ffmpegPath: getBinaryPath('FFMPEG_PATH', 'ffmpeg'),
+    ffprobePath: getBinaryPath('FFPROBE_PATH', 'ffprobe'),
   },
 
   downloads: {
