@@ -16,7 +16,16 @@ const useSsl = process.env.DATABASE_SSL === 'true' ||
 
 const ssl = useSsl ? { rejectUnauthorized: false } : undefined;
 
-if (!connectionString) {
+if (connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    logger.info(
+      `Connecting to PostgreSQL at host "${parsed.hostname}:${parsed.port || 5432}", db "${parsed.pathname.slice(1)}", ssl=${Boolean(ssl)}`
+    );
+  } catch {
+    logger.info(`Connecting to PostgreSQL via DATABASE_URL, ssl=${Boolean(ssl)}`);
+  }
+} else {
   logger.warn(
     'DATABASE_URL environment variable is not set! Falling back to host "%s:%d". Ensure DATABASE_URL is set in your host/Render settings.',
     config.database.host,
